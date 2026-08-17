@@ -152,19 +152,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [kioskMode, setKioskMode] = useState(false);
   const [offlineMode, setOfflineMode] = useState(false);
-  const [manualOffline, setManualOfflineState] = useState(() => {
-    try { return localStorage.getItem('manual_offline') === 'true'; } catch { return false; }
-  });
+
+  // Manual offline toggling is intentionally disabled. Keep API for compatibility.
+  const manualOffline = false;
+  const setManualOffline = (_v: boolean) => {
+    // no-op on purpose
+    console.debug('setManualOffline called but manual offline toggling is disabled');
+  };
+
   const initDone = useRef(false);
 
-  const setManualOffline = (v: boolean) => {
-    setManualOfflineState(v);
-    try { localStorage.setItem('manual_offline', String(v)); } catch {}
-    if (v) setOfflineMode(true); else setOfflineMode(!navigator.onLine);
+  const goOffline = (v: boolean) => {
+    if (v) setOfflineMode(true);
+    else setOfflineMode(!navigator.onLine);
   };
-  const manualOfflineRef = useRef(manualOffline);
-  manualOfflineRef.current = manualOffline;
-  const goOffline = (v: boolean) => { if (v || manualOfflineRef.current) setOfflineMode(true); else setOfflineMode(false); };
 
   const fetchProfile = async (userId: string): Promise<Profile | null> => {
     const { data, error } = await supabase
@@ -178,8 +179,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (cached && cached.id === userId) return cached;
       return null;
     }
-
-
 
     cacheProfile(data);
     cacheRole(Number(data.role));
@@ -280,16 +279,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Revalidate when coming back online
   useEffect(() => {
     const handleOnline = async () => {
-      if (!manualOfflineRef.current) setOfflineMode(false);
+      setOfflineMode(false);
       if (!user) return;
       const prof = await fetchProfile(user.id);
       if (prof) {
         setProfile(prof);
-        if (!manualOfflineRef.current) goOffline(false);
+        goOffline(false);
       }
     };
     const handleOffline = () => {
-      if (!manualOfflineRef.current) setOfflineMode(true);
+      setOfflineMode(true);
     };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -381,8 +380,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     setKioskMode(false);
     goOffline(false);
-    setManualOfflineState(false);
-    try { localStorage.removeItem('manual_offline'); } catch {}
+    // manual offline cleared on sign out is no longer required
     setSession(null);
     setUser(null);
     setProfile(null);
