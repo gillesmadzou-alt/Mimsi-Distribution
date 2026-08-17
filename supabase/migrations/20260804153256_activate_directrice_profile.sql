@@ -1,0 +1,1 @@
+UPDATE profiles SET is_active = true WHERE full_name = 'PAMBOU Estelle' AND role = 5;
