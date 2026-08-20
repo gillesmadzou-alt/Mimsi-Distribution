@@ -1,0 +1,31 @@
+{
+  "name": "Mimsi Distribution",
+  "short_name": "Mimsi",
+  "description": "Suivi de distribution des madeleines en pot — tournées, livraisons, géolocalisation en temps réel.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#f59e0b",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "/WhatsApp_Image_2026-07-31_at_19.28.27.jpeg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/WhatsApp_Image_2026-07-31_at_19.28.27.jpeg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any"
+    },
+    {
+      "src": "/WhatsApp_Image_2026-07-31_at_19.28.27.jpeg",
+      "sizes": "1080x1080",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}
