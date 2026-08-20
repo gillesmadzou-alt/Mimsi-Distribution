@@ -28,3 +28,7 @@ work/
 project-bolt-sb1-gwcarmm4/
 vite.config.ts.timestamp-*
 supabase/.temp/
+
+# Le projet est déployé avec npm (package-lock.json)
+pnpm-lock.yaml
+pnpm-workspace.yaml
