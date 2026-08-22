@@ -241,6 +241,7 @@ export default function BatchesPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_expenses' }, loadAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'batch_pot_types' }, loadAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'batch_sales_points' }, loadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_points' }, loadAll)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [loadAll, isOffline]);
@@ -1361,7 +1362,11 @@ export default function BatchesPage() {
                     </label>
                   ))}
                 </div>
-                <p className="text-xs text-gray-400 mt-1">{form.sales_point_ids.length} point(s) sélectionné(s)</p>
+                {salesPoints.length === 0 ? (
+                  <p className="text-xs text-amber-700 mt-1">Aucun point de vente actif disponible. Créez-le en ligne dans « Points de vente ».</p>
+                ) : (
+                  <p className="text-xs text-gray-400 mt-1">{form.sales_point_ids.length} point(s) sélectionné(s)</p>
+                )}
               </div>
               <button type="submit" className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-md hover:shadow-lg transition-all">
                 Créer la tournée

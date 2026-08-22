@@ -456,6 +456,7 @@ export default function ReturnsPage({ onNavigate }: { onNavigate?: (page: string
                   <option value="">— Choisir —</option>
                   {salesPoints.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.district})</option>)}
                 </select>
+                {salesPoints.length === 0 && <p className="mt-1 text-xs text-amber-700">Aucun point de vente actif disponible. Connectez-vous puis créez ou activez le point de vente.</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Type de retour</label>
