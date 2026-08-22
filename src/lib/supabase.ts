@@ -373,6 +373,9 @@ export interface Consignment {
   id: string;
   sales_point_id: string;
   batch_id: string | null;
+  pot_type_id: string | null;
+  production_record_id: string | null;
+  driver_id: string | null;
   quantity_deposited: number;
   quantity_returned: number;
   deposited_at: string;
@@ -380,6 +383,9 @@ export interface Consignment {
   notes: string | null;
   created_at: string;
   sales_point?: SalesPoint;
+  pot_type?: PotType;
+  production_record?: ProductionRecord;
+  driver?: Driver;
 }
 
 export interface RestockRequest {
