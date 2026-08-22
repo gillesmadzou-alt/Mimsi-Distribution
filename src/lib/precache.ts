@@ -249,18 +249,20 @@ export async function precacheAllData(onProgress?: ProgressCallback, userProfile
       },
     },
     {
-      key: 'returns-page-all',
+      key: 'returns-page-all:v2',
       fn: async () => {
-        const [returns, batches, salesPoints, drivers, potTypes] = await Promise.all([
-          supabase.from('returns').select('*, sales_point:sales_points(*), batch:delivery_batches(*), return_pot_types(*)').order('returned_at', { ascending: false }),
+        const [returns, batches, salesPoints, drivers, potTypes, bakers, consignments] = await Promise.all([
+          supabase.from('returns').select('*, sales_point:sales_points(*), batch:delivery_batches(*), return_pot_types(*), consignment:consignments(*, sales_point:sales_points(*), pot_type:pot_types(*), production_record:production_records(*, baker:bakers(*)), driver:drivers(*), batch:delivery_batches(*, driver:drivers(*))), pot_type:pot_types(*), production_record:production_records(*, baker:bakers(*)), driver:drivers(*)').order('returned_at', { ascending: false }),
           supabase.from('delivery_batches').select('*, pot_type:pot_types(*)').in('status', ['actif', 'cloture']).order('created_at', { ascending: false }),
           supabase.from('sales_points').select('*').eq('is_active', true).order('name'),
           supabase.from('drivers').select('*').order('full_name'),
           supabase.from('pot_types').select('*').eq('is_active', true).order('name'),
+          supabase.from('bakers').select('*').eq('status', 'actif').order('full_name'),
+          supabase.from('consignments').select('*, sales_point:sales_points(*), pot_type:pot_types(*), production_record:production_records(*, baker:bakers(*)), driver:drivers(*), batch:delivery_batches(*, driver:drivers(*))').order('deposited_at', { ascending: false }),
         ]);
         return {
           returns: returns.data ?? [], batches: batches.data ?? [], salesPoints: salesPoints.data ?? [],
-          drivers: drivers.data ?? [], potTypes: potTypes.data ?? [],
+          drivers: drivers.data ?? [], potTypes: potTypes.data ?? [], bakers: bakers.data ?? [], consignments: consignments.data ?? [],
         };
       },
     },

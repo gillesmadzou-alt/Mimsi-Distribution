@@ -203,6 +203,11 @@ export interface Return {
   id: string;
   batch_id: string;
   sales_point_id: string;
+  /** Consigne d'origine : conservée afin de pouvoir retracer le retour. */
+  consignment_id: string | null;
+  pot_type_id: string | null;
+  production_record_id: string | null;
+  driver_id: string | null;
   quantity: number;
   empty_pots: number;
   empty_lids: number;
@@ -214,6 +219,10 @@ export interface Return {
   created_at: string;
   sales_point?: SalesPoint;
   batch?: DeliveryBatch;
+  consignment?: Consignment;
+  pot_type?: PotType;
+  production_record?: ProductionRecord;
+  driver?: Driver;
   return_pot_types?: ReturnPotType[];
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { supabase, Return, DeliveryBatch, SalesPoint, Driver, PotType, ReturnPotType } from '@/lib/supabase';
+import { supabase, Return, DeliveryBatch, SalesPoint, Driver, PotType, ReturnPotType, Consignment, Baker, ProductionRecord } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { mergePendingSalesPoints } from '@/lib/offlineSalesPoints';
 import { useAuth } from '@/contexts/AuthContext';
@@ -10,6 +10,7 @@ import {
   Plus, X, Undo2, Package, AlertCircle, Trash2, CloudOff
 } from 'lucide-react';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import { getBrazzavilleArrondissementOptions, sameArrondissement } from '@/lib/locationReferences';
 
 const REASON_LABELS: Record<string, string> = {
   peremption: 'Péremption', invendu: 'Invendu', casse: 'Casse', autre: 'Autre',
@@ -38,10 +39,28 @@ interface PotTypeRow {
   madeleine_count: number;
 }
 
+type ConsignmentSource = Consignment & {
+  sales_point?: SalesPoint;
+  pot_type?: PotType;
+  production_record?: ProductionRecord & { baker?: Baker };
+  driver?: Driver;
+  batch?: DeliveryBatch & { driver?: Driver };
+};
+
+type ReturnView = Return & {
+  sales_point?: SalesPoint;
+  batch?: DeliveryBatch;
+  return_pot_types?: ReturnPotType[];
+  consignment?: ConsignmentSource;
+  pot_type?: PotType;
+  production_record?: ProductionRecord & { baker?: Baker };
+  driver?: Driver;
+};
+
 export default function ReturnsPage({ onNavigate }: { onNavigate?: (page: string) => void }) {
   const { profile } = useAuth();
   const { toast } = useToast();
-  const [returns, setReturns] = useState<(Return & { sales_point?: SalesPoint; batch?: DeliveryBatch; return_pot_types?: ReturnPotType[] })[]>([]);
+  const [returns, setReturns] = useState<ReturnView[]>([]);
   const [batches, setBatches] = useState<(DeliveryBatch & { pot_type?: any })[]>([]);
   const [salesPoints, setSalesPoints] = useState<SalesPoint[]>([]);
   const [potTypes, setPotTypes] = useState<PotType[]>([]);
@@ -50,12 +69,14 @@ export default function ReturnsPage({ onNavigate }: { onNavigate?: (page: string
   const [filterReason, setFilterReason] = useState<string>('all');
   const [filterDriverId, setFilterDriverId] = useState<string>('all');
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [bakers, setBakers] = useState<Baker[]>([]);
+  const [consignments, setConsignments] = useState<ConsignmentSource[]>([]);
+  const [filters, setFilters] = useState({ salesPoint: 'all', potType: 'all', baker: 'all', driver: 'all', zone: 'all', arrondissement: 'all' });
 
   const { fetchWithCache, isOffline } = useOfflineFetch();
 
   const [form, setForm] = useState({
-    batch_id: '',
-    sales_point_id: '',
+    consignment_id: '', batch_id: '', sales_point_id: '', pot_type_id: '', production_record_id: '', driver_id: '',
     item_type: 'pots' as 'pots' | 'madeleines' | 'both',
     reason: 'invendu' as string,
     notes: '',
@@ -80,11 +101,11 @@ export default function ReturnsPage({ onNavigate }: { onNavigate?: (page: string
 
     let returnsQuery = supabase
       .from('returns')
-      .select('*, sales_point:sales_points(*), batch:delivery_batches(*), return_pot_types(*)')
+      .select('*, sales_point:sales_points(*), batch:delivery_batches(*), return_pot_types(*), consignment:consignments(*, sales_point:sales_points(*), pot_type:pot_types(*), production_record:production_records(*, baker:bakers(*)), driver:drivers(*), batch:delivery_batches(*, driver:drivers(*))), pot_type:pot_types(*), production_record:production_records(*, baker:bakers(*)), driver:drivers(*)')
       .order('returned_at', { ascending: false });
 
-    const result = await fetchWithCache('returns-page-all', async () => {
-      const [returnsRes, batchesRes, pointsRes, driversRes, potsRes] = await Promise.all([
+    const result = await fetchWithCache('returns-page-all:v2', async () => {
+      const [returnsRes, batchesRes, pointsRes, driversRes, potsRes, bakersRes, consignmentsRes] = await Promise.all([
         returnsQuery,
         supabase.from('delivery_batches')
           .select('*, pot_type:pot_types(*)')
@@ -93,6 +114,10 @@ export default function ReturnsPage({ onNavigate }: { onNavigate?: (page: string
         supabase.from('sales_points').select('*').eq('is_active', true).order('name'),
         supabase.from('drivers').select('*').order('full_name'),
         supabase.from('pot_types').select('*').eq('is_active', true).order('name'),
+        supabase.from('bakers').select('*').eq('status', 'actif').order('full_name'),
+        supabase.from('consignments')
+          .select('*, sales_point:sales_points(*), pot_type:pot_types(*), production_record:production_records(*, baker:bakers(*)), driver:drivers(*), batch:delivery_batches(*, driver:drivers(*))')
+          .order('deposited_at', { ascending: false }),
       ]);
 
       return {
@@ -101,6 +126,8 @@ export default function ReturnsPage({ onNavigate }: { onNavigate?: (page: string
         salesPoints: pointsRes.data ?? [],
         drivers: driversRes.data ?? [],
         potTypes: potsRes.data ?? [],
+        bakers: bakersRes.data ?? [],
+        consignments: consignmentsRes.data ?? [],
       };
     });
 
@@ -110,18 +137,22 @@ export default function ReturnsPage({ onNavigate }: { onNavigate?: (page: string
       setSalesPoints(await mergePendingSalesPoints(Array.isArray(result.data.salesPoints) ? result.data.salesPoints : []));
       setDrivers(Array.isArray(result.data.drivers) ? result.data.drivers : []);
       setPotTypes(Array.isArray(result.data.potTypes) ? result.data.potTypes : []);
+      setBakers(Array.isArray(result.data.bakers) ? result.data.bakers : []);
+      setConsignments(Array.isArray(result.data.consignments) ? result.data.consignments as ConsignmentSource[] : []);
     }
     setLoading(false);
   }, [fetchWithCache]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  useRealtimeSubscription('returns-page', isOffline ? [] : ['returns', 'return_pot_types', 'delivery_batches', 'pot_types'], loadAll);
+  useRealtimeSubscription('returns-page', isOffline ? [] : ['returns', 'return_pot_types', 'consignments', 'delivery_batches', 'drivers', 'bakers', 'pot_types', 'production_records', 'sales_points'], loadAll);
+
+  const availablePotTypes = form.pot_type_id ? potTypes.filter((potType) => potType.id === form.pot_type_id) : potTypes;
 
   const addPotRow = () => {
-    if (potTypes.length === 0) return;
+    if (availablePotTypes.length === 0) return;
     const usedIds = new Set(potRows.map((r) => r.pot_type_id));
-    const available = potTypes.find((p) => !usedIds.has(p.id));
+    const available = availablePotTypes.find((p) => !usedIds.has(p.id));
     if (!available) return;
     setPotRows([...potRows, { pot_type_id: available.id, quantity: 0, empty_pots: 0, empty_lids: 0, madeleine_count: 0 }]);
   };
@@ -139,6 +170,26 @@ export default function ReturnsPage({ onNavigate }: { onNavigate?: (page: string
   const { save } = useOfflineSave();
   const { syncNow } = useSync();
 
+  const selectConsignment = (consignmentId: string) => {
+    const source = consignments.find((consignment) => consignment.id === consignmentId);
+    if (!source) {
+      setForm({ ...form, consignment_id: consignmentId });
+      return;
+    }
+    setForm({
+      ...form,
+      consignment_id: source.id,
+      batch_id: source.batch_id ?? '',
+      sales_point_id: source.sales_point_id,
+      pot_type_id: source.pot_type_id ?? '',
+      production_record_id: source.production_record_id ?? '',
+      driver_id: source.driver_id ?? source.batch?.driver_id ?? '',
+    });
+    if (source.pot_type_id && potRows.length === 0) {
+      setPotRows([{ pot_type_id: source.pot_type_id, quantity: 0, empty_pots: 0, empty_lids: 0, madeleine_count: 0 }]);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -148,11 +199,20 @@ export default function ReturnsPage({ onNavigate }: { onNavigate?: (page: string
     const totalMadeleines = potRows.reduce((s, r) => s + r.madeleine_count, 0);
 
     const batch = batches.find((b) => b.id === form.batch_id);
+    const source = consignments.find((consignment) => consignment.id === form.consignment_id);
+    if (!source || !form.batch_id || !form.sales_point_id || !form.pot_type_id || !form.production_record_id || !form.driver_id) {
+      toast('Sélectionnez la consigne d’origine : elle fournit le point de vente, le pot, la production et le commercial.', 'error');
+      return;
+    }
 
     const steps = buildSteps()
       .insertSingle('returns', {
         batch_id: form.batch_id,
         sales_point_id: form.sales_point_id,
+        consignment_id: form.consignment_id,
+        pot_type_id: form.pot_type_id,
+        production_record_id: form.production_record_id,
+        driver_id: form.driver_id,
         quantity: totalQty,
         empty_pots: totalEmptyPots,
         empty_lids: totalEmptyLids,
@@ -234,22 +294,29 @@ export default function ReturnsPage({ onNavigate }: { onNavigate?: (page: string
     if (!result.offline) syncNow();
 
     setShowModal(false);
-    setForm({ batch_id: '', sales_point_id: '', item_type: 'pots', reason: 'invendu', notes: '' });
+    setForm({ consignment_id: '', batch_id: '', sales_point_id: '', pot_type_id: '', production_record_id: '', driver_id: '', item_type: 'pots', reason: 'invendu', notes: '' });
     setPotRows([]);
     loadAll();
   };
 
-  const driverMap = useMemo(() => {
-    const m = new Map<string, string>();
-    batches.forEach((b) => m.set(b.id, b.driver_id));
-    return m;
-  }, [batches]);
-
   const filtered = returns.filter((r) => {
     const matchReason = filterReason === 'all' || r.reason === filterReason;
-    const matchDriver = filterDriverId === 'all' || driverMap.get(r.batch_id) === filterDriverId;
-    return matchReason && matchDriver;
+    const point = r.sales_point ?? r.consignment?.sales_point;
+    const bakerId = r.production_record?.baker_id ?? r.consignment?.production_record?.baker_id;
+    const driverId = r.driver_id ?? r.consignment?.driver_id ?? r.consignment?.batch?.driver_id;
+    const potTypeId = r.pot_type_id ?? r.consignment?.pot_type_id;
+    const pointArrondissements = [point?.arrondissement, ...(point?.arrondissements ?? [])].filter(Boolean);
+    return matchReason
+      && (filterDriverId === 'all' || driverId === filterDriverId)
+      && (filters.salesPoint === 'all' || r.sales_point_id === filters.salesPoint)
+      && (filters.potType === 'all' || potTypeId === filters.potType)
+      && (filters.baker === 'all' || bakerId === filters.baker)
+      && (filters.zone === 'all' || point?.zone === filters.zone)
+      && (filters.arrondissement === 'all' || pointArrondissements.some((arrondissement) => sameArrondissement(arrondissement, filters.arrondissement)));
   });
+
+  const zones = useMemo(() => [...new Set(salesPoints.map((point) => point.zone).filter(Boolean))].sort(), [salesPoints]);
+  const arrondissements = useMemo(() => getBrazzavilleArrondissementOptions(salesPoints.flatMap((point) => [point.arrondissement, ...(point.arrondissements ?? [])])), [salesPoints]);
 
   const totalReturns = filtered.reduce((s, r) => s + r.quantity, 0);
   const totalMadeleines = filtered.reduce((s, r) => s + (r.madeleine_count ?? 0), 0);
@@ -307,6 +374,32 @@ export default function ReturnsPage({ onNavigate }: { onNavigate?: (page: string
             Nouveau retour
           </button>
         )}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <select value={filters.salesPoint} onChange={(e) => setFilters({ ...filters, salesPoint: e.target.value })} className="px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 outline-none">
+          <option value="all">Tous les points de vente</option>
+          {salesPoints.map((point) => <option key={point.id} value={point.id}>{point.name}</option>)}
+        </select>
+        <select value={filters.potType} onChange={(e) => setFilters({ ...filters, potType: e.target.value })} className="px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 outline-none">
+          <option value="all">Tous les types de pot</option>
+          {potTypes.map((pot) => <option key={pot.id} value={pot.id}>{pot.name}</option>)}
+        </select>
+        <select value={filters.baker} onChange={(e) => setFilters({ ...filters, baker: e.target.value })} className="px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 outline-none">
+          <option value="all">Tous les producteurs</option>
+          {bakers.map((baker) => <option key={baker.id} value={baker.id}>{baker.full_name}</option>)}
+        </select>
+        <select value={filters.zone} onChange={(e) => setFilters({ ...filters, zone: e.target.value })} className="px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 outline-none">
+          <option value="all">Toutes les zones</option>
+          {zones.map((zone) => <option key={zone} value={zone}>{zone}</option>)}
+        </select>
+        <select value={filters.arrondissement} onChange={(e) => setFilters({ ...filters, arrondissement: e.target.value })} className="px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 outline-none">
+          <option value="all">Tous les arrondissements</option>
+          {arrondissements.map((arrondissement) => <option key={arrondissement} value={arrondissement}>{arrondissement}</option>)}
+        </select>
+        <button onClick={() => { setFilterReason('all'); setFilterDriverId('all'); setFilters({ salesPoint: 'all', potType: 'all', baker: 'all', driver: 'all', zone: 'all', arrondissement: 'all' }); }} className="px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
+          Réinitialiser les filtres
+        </button>
       </div>
 
       {/* Summary card */}
@@ -382,6 +475,12 @@ export default function ReturnsPage({ onNavigate }: { onNavigate?: (page: string
                     Lot {ret.batch?.batch_code ?? '—'} · {new Date(ret.returned_at).toLocaleString('fr-FR')}
                     {ret.notes ? ` · ${ret.notes}` : ''}
                   </p>
+                  <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600">
+                    <p><span className="font-medium text-gray-800">Type de pot :</span> {ret.pot_type?.name ?? ret.consignment?.pot_type?.name ?? 'Non renseigné'}</p>
+                    <p><span className="font-medium text-gray-800">Produit par :</span> {ret.production_record?.baker?.full_name ?? ret.consignment?.production_record?.baker?.full_name ?? 'Non renseigné'}</p>
+                    <p><span className="font-medium text-gray-800">Commercial :</span> {ret.driver?.full_name ?? ret.consignment?.driver?.full_name ?? ret.consignment?.batch?.driver?.full_name ?? 'Non renseigné'}</p>
+                    <p><span className="font-medium text-gray-800">Secteur :</span> {(ret.sales_point ?? ret.consignment?.sales_point)?.zone ?? 'Zone non renseignée'}{(ret.sales_point ?? ret.consignment?.sales_point)?.arrondissement ? ` · ${(ret.sales_point ?? ret.consignment?.sales_point)?.arrondissement}` : ''}</p>
+                  </div>
                   {/* Per-pot-type detail for this return */}
                   {ret.return_pot_types && ret.return_pot_types.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
@@ -443,22 +542,27 @@ export default function ReturnsPage({ onNavigate }: { onNavigate?: (page: string
             </div>
             <form onSubmit={handleSubmit} className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Lot de livraison</label>
-                <select required value={form.batch_id} onChange={(e) => setForm({ ...form, batch_id: e.target.value })}
+                <label className="block text-sm font-medium text-gray-700 mb-1">Consigne d’origine</label>
+                <select required value={form.consignment_id} onChange={(e) => selectConsignment(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none">
-                  <option value="">— Choisir —</option>
-                  {batches.map((b) => <option key={b.id} value={b.id}>{b.batch_code} ({b.pot_type?.name ?? '—'})</option>)}
+                  <option value="">— Choisir le dépôt à l’origine du retour —</option>
+                  {consignments.map((consignment) => {
+                    const outstanding = consignment.quantity_deposited - consignment.quantity_returned;
+                    return <option key={consignment.id} value={consignment.id} disabled={outstanding <= 0}>
+                      {consignment.sales_point?.name ?? 'Point de vente'} · {consignment.pot_type?.name ?? 'Pot non renseigné'} · {consignment.production_record?.baker?.full_name ?? 'Producteur non renseigné'} · {consignment.driver?.full_name ?? consignment.batch?.driver?.full_name ?? 'Commercial non renseigné'} ({outstanding} en circulation)
+                    </option>;
+                  })}
                 </select>
+                <p className="mt-1 text-xs text-gray-500">La sélection renseigne automatiquement le lot, le point de vente, le type de pot, la production et le commercial afin de préserver la traçabilité.</p>
+                {consignments.length === 0 && <p className="mt-1 text-xs text-amber-700">Aucune consigne disponible. Enregistrez d’abord le dépôt dans la tournée : la consigne sera créée ou mise à jour automatiquement.</p>}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Point de vente</label>
-                <select required value={form.sales_point_id} onChange={(e) => setForm({ ...form, sales_point_id: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none">
-                  <option value="">— Choisir —</option>
-                  {salesPoints.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.district})</option>)}
-                </select>
-                {salesPoints.length === 0 && <p className="mt-1 text-xs text-amber-700">Aucun point de vente actif disponible. Connectez-vous puis créez ou activez le point de vente.</p>}
-              </div>
+              {form.consignment_id && (
+                <div className="rounded-xl bg-blue-50 border border-blue-100 p-3 text-xs text-blue-900 space-y-1">
+                  <p><span className="font-semibold">Lot :</span> {batches.find((batch) => batch.id === form.batch_id)?.batch_code ?? '—'}</p>
+                  <p><span className="font-semibold">Point de vente :</span> {salesPoints.find((point) => point.id === form.sales_point_id)?.name ?? '—'} · <span className="font-semibold">Pot :</span> {potTypes.find((pot) => pot.id === form.pot_type_id)?.name ?? '—'}</p>
+                  <p><span className="font-semibold">Producteur :</span> {consignments.find((consignment) => consignment.id === form.consignment_id)?.production_record?.baker?.full_name ?? '—'} · <span className="font-semibold">Commercial :</span> {drivers.find((driver) => driver.id === form.driver_id)?.full_name ?? '—'}</p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Type de retour</label>
                 <div className="grid grid-cols-3 gap-2">
@@ -497,7 +601,7 @@ export default function ReturnsPage({ onNavigate }: { onNavigate?: (page: string
                           <div className="flex items-center gap-2">
                             <select value={row.pot_type_id} onChange={(e) => updatePotRow(idx, 'pot_type_id', e.target.value)}
                               className="flex-1 px-2.5 py-1.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-amber-500">
-                              {potTypes.filter((p) => !usedIds.has(p.id) || p.id === row.pot_type_id).map((p) => (
+                              {availablePotTypes.filter((p) => !usedIds.has(p.id) || p.id === row.pot_type_id).map((p) => (
                                 <option key={p.id} value={p.id}>{p.name}</option>
                               ))}
                             </select>
