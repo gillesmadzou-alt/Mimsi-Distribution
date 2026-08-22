@@ -77,7 +77,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
   const refreshPointOfSaleSnapshots = async () => {
     await Promise.all([
       'sales_points_page', 'sales_points_drivers', 'batches_page', 'consignments-page:v2', 'consignments-page:v3',
-      'expenses_page', 'restock-page', 'returns-page-all', 'field_observations',
+      'expenses_page', 'restock-page', 'returns-page-all', 'returns-page-all:v2', 'field_observations',
       'receivables', 'receivables:filters', 'reports-page', 'analytics-page',
     ].map((key) => clearPageCache(key)));
     window.dispatchEvent(new Event('mimsi:sales-points-updated'));
