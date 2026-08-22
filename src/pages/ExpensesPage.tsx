@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase, formatFCFA, EXPENSE_TYPE_LABELS, type DeliveryExpense, type ExpenseType, type SalesPoint } from '@/lib/supabase';
 import { downloadExcelReport, downloadPdfReport } from '@/lib/exportUtils';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
+import { mergePendingSalesPoints } from '@/lib/offlineSalesPoints';
 import { Receipt, Calendar, Truck, Users, ChevronDown, ChevronRight, TrendingDown, MapPin, Store, FileSpreadsheet, FileText, X, CloudOff } from 'lucide-react';
 
 type GroupBy = 'day' | 'tournee' | 'driver';
@@ -41,7 +42,7 @@ export default function ExpensesPage({ onNavigate }: { onNavigate?: (page: strin
     });
     if (result.data) {
       setExpenses(result.data.expenses);
-      setSalesPoints(result.data.salesPoints);
+      setSalesPoints(await mergePendingSalesPoints(result.data.salesPoints));
     } else {
       setLoadError(result.error ?? 'Erreur lors du chargement des depenses.');
     }

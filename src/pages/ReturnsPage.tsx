@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { supabase, Return, DeliveryBatch, SalesPoint, Driver, PotType, ReturnPotType } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
+import { mergePendingSalesPoints } from '@/lib/offlineSalesPoints';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useOfflineSave, buildSteps } from '@/lib/useOfflineSave';
@@ -106,7 +107,7 @@ export default function ReturnsPage({ onNavigate }: { onNavigate?: (page: string
     if (result.data) {
       setReturns(Array.isArray(result.data.returns) ? result.data.returns : []);
       setBatches(Array.isArray(result.data.batches) ? result.data.batches : []);
-      setSalesPoints(Array.isArray(result.data.salesPoints) ? result.data.salesPoints : []);
+      setSalesPoints(await mergePendingSalesPoints(Array.isArray(result.data.salesPoints) ? result.data.salesPoints : []));
       setDrivers(Array.isArray(result.data.drivers) ? result.data.drivers : []);
       setPotTypes(Array.isArray(result.data.potTypes) ? result.data.potTypes : []);
     }

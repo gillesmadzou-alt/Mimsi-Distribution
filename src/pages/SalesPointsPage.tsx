@@ -5,7 +5,9 @@ import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
-import { clearPageCache } from '@/lib/readCache';
+import { cachePageData, clearPageCache } from '@/lib/readCache';
+import { useOfflineSave, buildSteps } from '@/lib/useOfflineSave';
+import { mergePendingSalesPoints } from '@/lib/offlineSalesPoints';
 import { getBrazzavilleArrondissementOptions, sameArrondissement } from '@/lib/locationReferences';
 import {
   Plus, Search, MapPin, Phone, User as UserIcon, X, Edit2, Trash2, Store,
@@ -67,6 +69,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
   const canAddPayment = (profile?.role ?? 1) >= 1;
 
   const { fetchWithCache, isOffline } = useOfflineFetch();
+  const { save } = useOfflineSave();
 
   // A point of sale is used in several operational forms.  Clear only the
   // dependent snapshots after a successful mutation so the next online visit
@@ -98,7 +101,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
       if (error) throw error;
       return data ?? [];
     });
-    if (result.data) setPoints(Array.isArray(result.data) ? result.data : []);
+    if (result.data) setPoints(await mergePendingSalesPoints(Array.isArray(result.data) ? result.data : []));
     else setLoadError(result.error ?? 'Erreur lors du chargement des points de vente.');
     setLoading(false);
   }, [fetchWithCache]);
@@ -180,12 +183,10 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isOffline || !navigator.onLine) {
-      toast('Un point de vente doit être créé avec Internet afin d’être disponible dans les tournées, consignes et autres formulaires.', 'error');
-      return;
-    }
-    const userId = (await supabase.auth.getUser()).data.user?.id;
+    const userId = profile?.id;
+    const pointId = editing?.id ?? crypto.randomUUID();
     const payload = {
+      ...(editing ? {} : { id: pointId }),
       name: form.name,
       address: form.address || null,
       district: form.district,
@@ -202,14 +203,55 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
       is_new: form.is_new,
       quota_amount: Number(form.quota_amount) || 4000,
       driver_id: form.driver_id || null,
-      created_by: userId,
+      ...(userId ? { created_by: userId } : {}),
     };
-    if (editing) {
-      const { error } = await supabase.from('sales_points').update(payload).eq('id', editing.id);
-      if (error) { toast('Erreur lors de la mise à jour.', 'error'); return; }
-    } else {
-      const { error } = await supabase.from('sales_points').insert(payload);
-      if (error) { toast('Erreur lors de la création.', 'error'); return; }
+
+    const steps = editing
+      ? buildSteps().update('sales_points', payload, { column: 'id', value: editing.id }).getSteps()
+      : buildSteps().insert('sales_points', payload, { id: `sales-point-${pointId}` }).getSteps();
+    const result = await save(editing ? 'Mise à jour du point de vente' : 'Création du point de vente', 'sales-points', steps);
+    if (!result.queued && result.error) { toast('Erreur lors de l’enregistrement du point de vente.', 'error'); return; }
+
+    const localPoint: SalesPoint = {
+      id: pointId,
+      name: form.name,
+      address: form.address || null,
+      district: form.district,
+      arrondissement: form.arrondissements[0] ?? null,
+      arrondissements: form.arrondissements,
+      zone: form.zone,
+      owner_name: null,
+      owner_full_name: form.owner_full_name || null,
+      owner_phone: form.owner_phone || null,
+      owner_phone_secondary: form.owner_phone_secondary || null,
+      owner_email: form.owner_email || null,
+      delivery_days: form.delivery_days,
+      photo_url: null,
+      is_active: form.is_active,
+      is_new: form.is_new,
+      quota_amount: Number(form.quota_amount) || 4000,
+      quota_paid: editing?.quota_paid ?? 0,
+      quota_status: editing?.quota_status ?? 'non_paye',
+      gps_lat: form.gps_lat ? Number(form.gps_lat) : null,
+      gps_lng: form.gps_lng ? Number(form.gps_lng) : null,
+      created_by: userId ?? null,
+      driver_id: form.driver_id || null,
+      created_at: editing?.created_at ?? new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (result.queued) {
+      const updatedPoints = editing
+        ? points.map((point) => point.id === editing.id ? { ...point, ...localPoint } : point)
+        : [...points, localPoint].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+      setPoints(updatedPoints);
+      await cachePageData('sales_points_page', updatedPoints);
+      window.dispatchEvent(new Event('mimsi:sales-points-updated'));
+      setShowModal(false);
+      toast(editing
+        ? 'Mise à jour enregistrée hors ligne. Elle sera synchronisée automatiquement.'
+        : 'Point de vente créé hors ligne. Il sera synchronisé automatiquement dès le retour du réseau.', 'info');
+      return;
     }
     await refreshPointOfSaleSnapshots();
     setShowModal(false);

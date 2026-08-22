@@ -8,6 +8,7 @@ import {
 import ExpenseEntrySection, { type ExpenseLine } from '@/components/ExpenseEntrySection';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { getCachedPageData, cachePageData } from '@/lib/readCache';
+import { mergePendingSalesPoints } from '@/lib/offlineSalesPoints';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
@@ -218,7 +219,7 @@ export default function BatchesPage() {
         setBatches(result.data.batches);
         setDrivers(result.data.drivers);
         setPotTypes(result.data.potTypes);
-        setSalesPoints(result.data.salesPoints);
+        setSalesPoints(await mergePendingSalesPoints(result.data.salesPoints));
         setStockAlerts(result.data.stockAlerts);
       }
       setLoadError(result.error);

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase, Receivable, ReceivablePayment, Driver, SalesPoint, formatFCFA } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { getCachedPageData, cachePageData } from '@/lib/readCache';
+import { mergePendingSalesPoints } from '@/lib/offlineSalesPoints';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useOfflineSave, buildSteps } from '@/lib/useOfflineSave';
@@ -74,7 +75,7 @@ export default function ReceivablesPage({ onNavigate }: { onNavigate?: (page: st
       if (isOffline || !navigator.onLine) {
         const cached = await getCachedPageData<{ drivers: Driver[]; salesPoints: SalesPoint[] }>('receivables:filters');
         setDrivers(cached?.data.drivers ?? []);
-        setSalesPoints(cached?.data.salesPoints ?? []);
+        setSalesPoints(await mergePendingSalesPoints(cached?.data.salesPoints ?? []));
         return;
       }
       const [driversRes, pointsRes] = await Promise.all([
@@ -82,7 +83,7 @@ export default function ReceivablesPage({ onNavigate }: { onNavigate?: (page: st
         supabase.from('sales_points').select('*').order('name'),
       ]);
       const driversData = driversRes.data ?? [];
-      const salesPointsData = pointsRes.data ?? [];
+      const salesPointsData = await mergePendingSalesPoints(pointsRes.data ?? []);
       setDrivers(driversData);
       setSalesPoints(salesPointsData);
       await cachePageData('receivables:filters', { drivers: driversData, salesPoints: salesPointsData });
