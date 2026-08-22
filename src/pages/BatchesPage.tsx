@@ -131,6 +131,11 @@ export default function BatchesPage() {
       supabase.from('sales_points').select('*').eq('is_active', true).order('name'),
     ]);
 
+    const initialError = [batchesRes, driversRes, potsRes, pointsRes]
+      .map((response) => response.error)
+      .find(Boolean);
+    if (initialError) throw initialError;
+
     const batchesData = batchesRes.data ?? [];
     const batchIds = batchesData.map((b) => b.id);
 
@@ -154,13 +159,19 @@ export default function BatchesPage() {
           .in('batch_id', batchIds),
       ]);
 
+      const detailError = [depsRes, bspRes, bptRes]
+        .map((response) => response.error)
+        .find(Boolean);
+      if (detailError) throw detailError;
+
       const depositIds = (depsRes.data ?? []).map((d) => d.id);
       let receivablesByDeposit: Record<string, Receivable> = {};
       if (depositIds.length > 0) {
-        const { data: recvs } = await supabase
+        const { data: recvs, error: receivablesError } = await supabase
           .from('receivables')
           .select('*, sales_point:sales_points(*), driver:drivers(*)')
           .in('deposit_id', depositIds);
+        if (receivablesError) throw receivablesError;
         (recvs ?? []).forEach((r) => {
           if (r.deposit_id) receivablesByDeposit[r.deposit_id] = r;
         });
@@ -210,6 +221,7 @@ export default function BatchesPage() {
         setSalesPoints(result.data.salesPoints);
         setStockAlerts(result.data.stockAlerts);
       }
+      setLoadError(result.error);
     } catch {
       setLoadError('Erreur lors du chargement des tournees.');
     }
@@ -242,6 +254,10 @@ export default function BatchesPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.driver_id) {
+      setActionError('Choisissez un commercial actif pour cette tournée.');
+      return;
+    }
     const batchCode = generateBatchCode();
     const needsPots = form.batch_type === 'livraison' || form.batch_type === 'mixte';
 
@@ -1219,8 +1235,15 @@ export default function BatchesPage() {
                 <select required value={form.driver_id} onChange={(e) => setForm({ ...form, driver_id: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none">
                   <option value="">— Choisir —</option>
-                  {drivers.map((d) => <option key={d.id} value={d.id}>{d.full_name} ({d.zone})</option>)}
+                  {drivers.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.full_name}{d.zone ? ` (${d.zone})` : ''}
+                    </option>
+                  ))}
                 </select>
+                {drivers.length === 0 && (
+                  <p className="mt-1 text-xs text-amber-700">Aucun commercial actif n’est disponible. Vérifiez les comptes du personnel puis actualisez la page.</p>
+                )}
               </div>
               {needsPots(form.batch_type) && (
                 <>
