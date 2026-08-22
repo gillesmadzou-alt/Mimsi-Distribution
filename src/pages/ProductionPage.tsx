@@ -85,7 +85,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
       potTypes: PotType[];
       pendingBakerReqs: (PersonnelChangeRequest & { requester?: { full_name: string } })[];
       pendingKneaderReqs: (PersonnelChangeRequest & { requester?: { full_name: string } })[];
-    }>('production-page', async () => {
+    }>('production-page:v2', async () => {
       const [bakersRes, kneadersRes, recordsRes, doughRes, potsRes, bakerPendRes, kneaderPendRes, batchRes] = await Promise.all([
         supabase.from('bakers').select('*').order('full_name'),
         supabase.from('kneaders').select('*').order('full_name'),
@@ -96,6 +96,11 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
         supabase.from('personnel_change_requests').select('*, requester:profiles!requested_by(full_name)').eq('entity_type', 'kneader').eq('status', 'en_attente').order('created_at', { ascending: false }),
         supabase.from('dough_batches').select('*, kneader:kneaders(*), ingredients:dough_batch_ingredients(*, ingredient:ingredients(*))').order('batch_date', { ascending: false }).limit(50),
       ]);
+      const loadError = [bakersRes, kneadersRes, recordsRes, doughRes, potsRes, bakerPendRes, kneaderPendRes, batchRes]
+        .map((response) => response.error)
+        .find(Boolean);
+      if (loadError) throw loadError;
+
       return {
         bakers: bakersRes.data ?? [],
         kneaders: kneadersRes.data ?? [],
@@ -187,7 +192,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
   const handleDoughSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const kneaderId = isKneader && myKneader ? myKneader.id : doughForm.kneader_id;
-    if (!kneaderId) { toast('Veuillez sélectionner un pétrisseur.', 'error'); return; }
+    if (!kneaderId) { toast('Veuillez sélectionner un fournier.', 'error'); return; }
     if (!doughForm.baker_id) { toast('Veuillez sélectionner un pétrisseur.', 'error'); return; }
     if (doughForm.bucket_count <= 0) { toast('Le nombre de seaux doit être supérieur à 0.', 'error'); return; }
     if (doughForm.bucket_weight_kg <= 0) { toast('Le poids par seau doit être supérieur à 0.', 'error'); return; }
@@ -492,7 +497,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
   };
 
   const deleteKneader = async (kneader: Kneader) => {
-    if (!(await confirmDialog({ message: `Demande de suppression du pétrisseur ${kneader.full_name} ? Cette demande devra être approuvée par la Directrice et le Directeur adjoint.`, confirmLabel: 'Demander la suppression', danger: true }))) return;
+    if (!(await confirmDialog({ message: `Demande de suppression du fournier ${kneader.full_name} ? Cette demande devra être approuvée par la Directrice et le Directeur adjoint.`, confirmLabel: 'Demander la suppression', danger: true }))) return;
     const userId = (await supabase.auth.getUser()).data.user?.id;
     await supabase.from('personnel_change_requests').insert({
       entity_type: 'kneader',
@@ -622,7 +627,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
     { id: 'records', label: 'Productions', show: canManage && !isKneader },
     { id: 'dough', label: 'Livraisons de pâte', show: canManage },
     { id: 'bakers', label: 'Pétrisseurs', show: canManageBakers },
-    { id: 'kneaders', label: 'Pétrisseurs', show: canManageBakers },
+    { id: 'kneaders', label: 'Fournier', show: canManageBakers },
   ];
   const visibleTabs = tabs.filter((t) => t.show);
 
@@ -651,7 +656,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
           {tab === 'dough' && (
             <select value={filterKneader} onChange={(e) => setFilterKneader(e.target.value)}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium border outline-none transition-all ${filterKneader !== 'all' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white border-gray-200 text-gray-600'}`}>
-              <option value="all">Tous les pétrisseurs</option>
+              <option value="all">Tous les fourniers</option>
               {kneaders.map((k) => <option key={k.id} value={k.id}>{k.full_name}</option>)}
             </select>
           )}
@@ -706,7 +711,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
           }}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-md hover:shadow-lg transition-all">
             <Plus className="w-5 h-5" />
-            Nouveau pétrisseur
+            Nouveau fournier
           </button>
         )}
         {canManageBakers && tab === 'kneaders' && (
@@ -742,7 +747,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
       )}
       {isKneader && !myKneader && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
-          Votre compte n'est pas encore lié à un profil de pétrisseur. Contactez un responsable pour qu'il vous associe afin d'enregistrer vos livraisons de pâte personnellement.
+          Votre compte n'est pas encore lié à un profil de fournier. Contactez un responsable pour qu'il vous associe afin d'enregistrer vos livraisons de pâte personnellement.
         </div>
       )}
 
@@ -1003,7 +1008,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
         <>
         {renderPendingReqs(pendingKneaderReqs)}
         {kneaders.length === 0 ? (
-          <div className="text-center py-20 text-gray-400">Aucun pétrisseur enregistré</div>
+          <div className="text-center py-20 text-gray-400">Aucun fournier enregistré</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {kneaders.map((kneader) => (
@@ -1086,7 +1091,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
 
       {/* Kneader modal */}
       {showKneaderModal && (
-        <Modal title={editingKneader ? 'Modifier le pétrisseur' : 'Nouveau pétrisseur'} onClose={() => setShowKneaderModal(false)}>
+        <Modal title={editingKneader ? 'Modifier le fournier' : 'Nouveau fournier'} onClose={() => setShowKneaderModal(false)}>
           <form onSubmit={handleKneaderSubmit} className="space-y-3">
             <FormField label="Nom complet" required>
               <input required value={kneaderForm.full_name} onChange={(e) => setKneaderForm({ ...kneaderForm, full_name: e.target.value })} className={inputCls} />
@@ -1103,12 +1108,12 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
             <FormField label="Notes">
               <input value={kneaderForm.notes} onChange={(e) => setKneaderForm({ ...kneaderForm, notes: e.target.value })} className={inputCls} />
             </FormField>
-            <FormField label="Compte pétrisseur (optionnel)">
+            <FormField label="Compte fournier (optionnel)">
               <select value={kneaderForm.profile_id} onChange={(e) => setKneaderForm({ ...kneaderForm, profile_id: e.target.value })} className={inputCls}>
                 <option value="">— Aucun —</option>
                 {linkableProfiles.map((p) => <option key={p.id} value={p.id}>{p.full_name}</option>)}
               </select>
-              <p className="mt-1 text-xs text-gray-400">Permet au pétrisseur d'enregistrer ses livraisons lui-même.</p>
+              <p className="mt-1 text-xs text-gray-400">Permet au fournier d'enregistrer ses livraisons de pâte lui-même.</p>
             </FormField>
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-800">
               Cette demande sera soumise pour approbation à la Directrice et au Directeur général adjoint.
@@ -1127,7 +1132,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
                 Livraison enregistrée pour : <strong>{myKneader.full_name}</strong>
               </div>
             ) : (
-              <FormField label="Pétrisseur" required>
+              <FormField label="Fournier" required>
                 <select required value={doughForm.kneader_id} onChange={(e) => setDoughForm({ ...doughForm, kneader_id: e.target.value })} className={inputCls}>
                   <option value="">— Choisir —</option>
                   {kneaders.map((k) => <option key={k.id} value={k.id}>{k.full_name}</option>)}
