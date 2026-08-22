@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
-import { supabase, Consignment, SalesPoint, DeliveryBatch, Driver, PotType, ProductionRecord } from '@/lib/supabase';
+import { supabase, Baker, Consignment, SalesPoint, DeliveryBatch, Driver, PotType, ProductionRecord } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
+import { getBrazzavilleArrondissementOptions, sameArrondissement } from '@/lib/locationReferences';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Package, Plus, X, Undo2, MapPin, AlertTriangle, CloudOff
@@ -15,6 +16,7 @@ export default function ConsignmentsPage({ onNavigate }: { onNavigate?: (page: s
   const [salesPoints, setSalesPoints] = useState<SalesPoint[]>([]);
   const [batches, setBatches] = useState<DeliveryBatch[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [bakers, setBakers] = useState<Baker[]>([]);
   const [potTypes, setPotTypes] = useState<PotType[]>([]);
   const [productionRecords, setProductionRecords] = useState<ProductionRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,24 +36,26 @@ export default function ConsignmentsPage({ onNavigate }: { onNavigate?: (page: s
 
   const loadAll = useCallback(async () => {
     setLoading(true);
-    const result = await fetchWithCache('consignments-page:v2', async () => {
-      const [consRes, spRes, batchRes, driversRes, potsRes, productionRes] = await Promise.all([
+    const result = await fetchWithCache('consignments-page:v3', async () => {
+      const [consRes, spRes, batchRes, driversRes, bakersRes, potsRes, productionRes] = await Promise.all([
         supabase.from('consignments').select('*, sales_point:sales_points(*), pot_type:pot_types(*), production_record:production_records(*, baker:bakers(*)), driver:drivers(*), batch:delivery_batches(*, driver:drivers(*))').order('deposited_at', { ascending: false }),
         supabase.from('sales_points').select('*').eq('is_active', true).order('name'),
         supabase.from('delivery_batches').select('*').eq('status', 'actif').order('created_at', { ascending: false }),
         supabase.from('drivers').select('*').eq('status', 'actif').order('full_name'),
+        supabase.from('bakers').select('*').eq('status', 'actif').order('full_name'),
         supabase.from('pot_types').select('*').eq('is_active', true).order('name'),
         supabase.from('production_records').select('*, baker:bakers(*), pot_type:pot_types(*)').order('production_date', { ascending: false }),
       ]);
-      const loadError = [consRes, spRes, batchRes, driversRes, potsRes, productionRes].map((response) => response.error).find(Boolean);
+      const loadError = [consRes, spRes, batchRes, driversRes, bakersRes, potsRes, productionRes].map((response) => response.error).find(Boolean);
       if (loadError) throw loadError;
-      return { consignments: consRes.data ?? [], salesPoints: spRes.data ?? [], batches: batchRes.data ?? [], drivers: driversRes.data ?? [], potTypes: potsRes.data ?? [], productionRecords: productionRes.data ?? [] };
+      return { consignments: consRes.data ?? [], salesPoints: spRes.data ?? [], batches: batchRes.data ?? [], drivers: driversRes.data ?? [], bakers: bakersRes.data ?? [], potTypes: potsRes.data ?? [], productionRecords: productionRes.data ?? [] };
     });
     if (result.data) {
       setConsignments(Array.isArray(result.data.consignments) ? result.data.consignments as ConsignmentView[] : []);
       setSalesPoints(Array.isArray(result.data.salesPoints) ? result.data.salesPoints : []);
       setBatches(Array.isArray(result.data.batches) ? result.data.batches : []);
       setDrivers(Array.isArray(result.data.drivers) ? result.data.drivers : []);
+      setBakers(Array.isArray(result.data.bakers) ? result.data.bakers : []);
       setPotTypes(Array.isArray(result.data.potTypes) ? result.data.potTypes : []);
       setProductionRecords(Array.isArray(result.data.productionRecords) ? result.data.productionRecords as ProductionRecord[] : []);
     }
@@ -60,7 +64,7 @@ export default function ConsignmentsPage({ onNavigate }: { onNavigate?: (page: s
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  useRealtimeSubscription('consignments-page', isOffline ? [] : ['consignments', 'consignment_returns', 'delivery_batches', 'drivers', 'pot_types', 'production_records', 'sales_points'], loadAll);
+  useRealtimeSubscription('consignments-page', isOffline ? [] : ['consignments', 'consignment_returns', 'delivery_batches', 'drivers', 'bakers', 'pot_types', 'production_records', 'sales_points'], loadAll);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,7 +101,7 @@ export default function ConsignmentsPage({ onNavigate }: { onNavigate?: (page: s
 
   const totalOut = consignments.reduce((s, c) => s + (c.quantity_deposited - c.quantity_returned), 0);
   const zones = [...new Set(salesPoints.map((p) => p.zone).filter(Boolean))].sort();
-  const arrondissements = [...new Set(salesPoints.flatMap((p) => [p.arrondissement, ...(p.arrondissements ?? [])]).filter((value): value is string => Boolean(value)))].sort();
+  const arrondissements = getBrazzavilleArrondissementOptions(salesPoints.flatMap((p) => [p.arrondissement, ...(p.arrondissements ?? [])]));
   const availableProductionRecords = productionRecords.filter((record) => !form.pot_type_id || record.pot_type_id === form.pot_type_id);
   const filteredConsignments = consignments.filter((c) => {
     const outstanding = c.quantity_deposited - c.quantity_returned;
@@ -107,7 +111,7 @@ export default function ConsignmentsPage({ onNavigate }: { onNavigate?: (page: s
       && (filters.baker === 'all' || c.production_record?.baker_id === filters.baker)
       && (filters.driver === 'all' || c.driver_id === filters.driver)
       && (filters.zone === 'all' || c.sales_point?.zone === filters.zone)
-      && (filters.arrondissement === 'all' || pointArrondissements.includes(filters.arrondissement))
+      && (filters.arrondissement === 'all' || pointArrondissements.some((arrondissement) => sameArrondissement(arrondissement, filters.arrondissement)))
       && (filters.status === 'all' || (filters.status === 'en_circulation' ? outstanding > 0 : outstanding === 0));
   });
 
@@ -143,7 +147,7 @@ export default function ConsignmentsPage({ onNavigate }: { onNavigate?: (page: s
         </select>
         <select value={filters.baker} onChange={(e) => setFilters({ ...filters, baker: e.target.value })} className="px-3 py-2 rounded-xl border border-gray-200 text-sm">
           <option value="all">Tous les pétrisseurs</option>
-          {[...new Map(productionRecords.filter((r) => r.baker).map((r) => [r.baker_id, r.baker!])).values()].map((baker) => <option key={baker.id} value={baker.id}>{baker.full_name}</option>)}
+          {bakers.map((baker) => <option key={baker.id} value={baker.id}>{baker.full_name}</option>)}
         </select>
         <select value={filters.driver} onChange={(e) => setFilters({ ...filters, driver: e.target.value })} className="px-3 py-2 rounded-xl border border-gray-200 text-sm">
           <option value="all">Tous les commerciaux</option>
