@@ -6,6 +6,7 @@ import { useConfirm } from '@/contexts/ConfirmContext';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { clearPageCache } from '@/lib/readCache';
+import { getBrazzavilleArrondissementOptions, sameArrondissement } from '@/lib/locationReferences';
 import {
   Plus, Search, MapPin, Phone, User as UserIcon, X, Edit2, Trash2, Store,
   Mail, Wallet, CheckCircle2, Clock, AlertCircle, PlusCircle, History, Crosshair,
@@ -72,9 +73,9 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
   // always obtains the current list, without deleting unrelated offline data.
   const refreshPointOfSaleSnapshots = async () => {
     await Promise.all([
-      'sales_points_page', 'batches_page', 'consignments-page:v2',
+      'sales_points_page', 'sales_points_drivers', 'batches_page', 'consignments-page:v2', 'consignments-page:v3',
       'expenses_page', 'restock-page', 'returns-page-all', 'field_observations',
-      'receivables', 'reports-page', 'analytics-page',
+      'receivables', 'receivables:filters', 'reports-page', 'analytics-page',
     ].map((key) => clearPageCache(key)));
     window.dispatchEvent(new Event('mimsi:sales-points-updated'));
   };
@@ -116,12 +117,16 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
     const matchStatus = !filterStatus || p.quota_status === filterStatus;
     const matchNew = !filterNew || (filterNew === 'new' ? p.is_new : !p.is_new);
     const matchZone = !filterZone || p.zone === filterZone;
-    const matchArrond = !filterArrond || (p.arrondissements ?? []).includes(filterArrond);
+    const pointArrondissements = [p.arrondissement, ...(p.arrondissements ?? [])];
+    const matchArrond = !filterArrond || pointArrondissements.some((arrondissement) => sameArrondissement(arrondissement, filterArrond));
     return matchSearch && matchStatus && matchNew && matchZone && matchArrond;
   });
 
   const zones = useMemo(() => Array.from(new Set(points.map((p) => p.zone).filter(Boolean))).sort(), [points]);
-  const arrondissements = useMemo(() => Array.from(new Set(points.flatMap((p) => p.arrondissements ?? []))).sort(), [points]);
+  const arrondissements = useMemo(
+    () => getBrazzavilleArrondissementOptions(points.flatMap((p) => [p.arrondissement, ...(p.arrondissements ?? [])])),
+    [points],
+  );
 
   const openCreate = () => {
     setEditing(null);
