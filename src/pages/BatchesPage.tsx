@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   supabase, DeliveryBatch, Driver, PotType, SalesPoint, Deposit, Receivable,
   Barcode as BarcodeType, formatFCFA, createNotification,
-  BatchType, BATCH_TYPE_LABELS, BatchSalesPoint, BatchPotType, DeliveryExpense,
+  BatchType, BATCH_TYPE_LABELS, BatchSalesPoint, BatchPotType, DeliveryExpense, DeliveryBatchApproval,
   EXPENSE_TYPE_LABELS,
 } from '@/lib/supabase';
 import ExpenseEntrySection, { type ExpenseLine } from '@/components/ExpenseEntrySection';
@@ -35,7 +35,7 @@ export default function BatchesPage() {
   const { profile } = useAuth();
   const { toast } = useToast();
   const { confirmDialog } = useConfirm();
-  const [batches, setBatches] = useState<(DeliveryBatch & { driver?: Driver; pot_type?: PotType; deposits?: Deposit[]; sales_points?: BatchSalesPoint[]; batch_pot_types?: BatchPotType[] })[]>([]);
+  const [batches, setBatches] = useState<(DeliveryBatch & { driver?: Driver; pot_type?: PotType; deposits?: Deposit[]; sales_points?: BatchSalesPoint[]; batch_pot_types?: BatchPotType[]; approval?: DeliveryBatchApproval })[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [potTypes, setPotTypes] = useState<PotType[]>([]);
   const [salesPoints, setSalesPoints] = useState<SalesPoint[]>([]);
@@ -89,7 +89,9 @@ export default function BatchesPage() {
   const [showStockAlerts, setShowStockAlerts] = useState(false);
   const { fetchWithCache, isOffline } = useOfflineFetch();
 
-  const canCreate = (profile?.role ?? 1) >= 4;
+  const canCreateBatch = [2, 4, 5, 6].includes(profile?.role ?? 1);
+  const canSuperviseBatch = [4, 5, 6].includes(profile?.role ?? 1);
+  const canApproveBatch = [4, 5, 6].includes(profile?.role ?? 1);
   const canDeposit = (profile?.role ?? 1) >= 2;
   const canDirectDeliver = (profile?.role ?? 1) === 4 || (profile?.role ?? 1) === 5 || (profile?.role ?? 1) === 6;
 
@@ -98,7 +100,7 @@ export default function BatchesPage() {
     setLoadError(null);
     try {
       const result = await fetchWithCache<{
-        batches: (DeliveryBatch & { driver?: Driver; pot_type?: PotType; deposits?: Deposit[]; sales_points?: BatchSalesPoint[]; batch_pot_types?: BatchPotType[] })[];
+        batches: (DeliveryBatch & { driver?: Driver; pot_type?: PotType; deposits?: Deposit[]; sales_points?: BatchSalesPoint[]; batch_pot_types?: BatchPotType[]; approval?: DeliveryBatchApproval })[];
         drivers: Driver[];
         potTypes: PotType[];
         salesPoints: SalesPoint[];
@@ -143,9 +145,10 @@ export default function BatchesPage() {
     let depositsMap: Record<string, Deposit[]> = {};
     let salesPointsMap: Record<string, BatchSalesPoint[]> = {};
     let potTypesMap: Record<string, BatchPotType[]> = {};
+    let approvalsMap: Record<string, DeliveryBatchApproval> = {};
 
     if (batchIds.length > 0) {
-      const [depsRes, bspRes, bptRes] = await Promise.all([
+      const [depsRes, bspRes, bptRes, approvalsRes] = await Promise.all([
         supabase
           .from('deposits')
           .select('*, sales_point:sales_points(*), barcode:barcodes(*)')
@@ -158,9 +161,13 @@ export default function BatchesPage() {
           .from('batch_pot_types')
           .select('*, pot_type:pot_types(*)')
           .in('batch_id', batchIds),
+        supabase
+          .from('delivery_batch_approvals')
+          .select('*')
+          .in('batch_id', batchIds),
       ]);
 
-      const detailError = [depsRes, bspRes, bptRes]
+      const detailError = [depsRes, bspRes, bptRes, approvalsRes]
         .map((response) => response.error)
         .find(Boolean);
       if (detailError) throw detailError;
@@ -191,6 +198,9 @@ export default function BatchesPage() {
         if (!potTypesMap[bpt.batch_id]) potTypesMap[bpt.batch_id] = [];
         potTypesMap[bpt.batch_id].push(bpt as BatchPotType);
       });
+      (approvalsRes.data ?? []).forEach((approval) => {
+        approvalsMap[approval.batch_id] = approval as DeliveryBatchApproval;
+      });
     }
 
     // Check stock alerts: pot types below their low_stock_threshold
@@ -208,6 +218,7 @@ export default function BatchesPage() {
         deposits: depositsMap[b.id] ?? [],
         sales_points: salesPointsMap[b.id] ?? [],
         batch_pot_types: potTypesMap[b.id] ?? [],
+        approval: approvalsMap[b.id],
       })),
       drivers: driversRes.data ?? [],
       potTypes: potsRes.data ?? [],
@@ -241,6 +252,7 @@ export default function BatchesPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'receivable_payments' }, loadAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_expenses' }, loadAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'batch_pot_types' }, loadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_batch_approvals' }, loadAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'batch_sales_points' }, loadAll)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_points' }, loadAll)
       .subscribe();
@@ -312,6 +324,8 @@ export default function BatchesPage() {
             pot_type_id: pe.pot_type_id,
             movement_type: 'attribution',
             quantity: pe.quantity,
+            batch_id: data.id,
+            driver_id: form.driver_id,
             reference_id: data.id,
             notes: `Attribution lot ${batchCode}`,
           });
@@ -345,11 +359,44 @@ export default function BatchesPage() {
         driver_id: form.driver_id,
         description: `Tournée ${batchCode} créée (${BATCH_TYPE_LABELS[form.batch_type]}) — ${form.sales_point_ids.length} PDV · ${potSummary}`,
       });
+
+      const { error: approvalError } = await supabase.from('delivery_batch_approvals').insert({
+        batch_id: data.id,
+        requested_by: profile?.id,
+      });
+      if (approvalError) {
+        setActionError('Le lot est opérationnel, mais la demande de validation n’a pas pu être créée. Réessayez après connexion.');
+      } else {
+        const { data: approvers } = await supabase
+          .from('profiles')
+          .select('id')
+          .in('role', [4, 5, 6])
+          .eq('is_active', true);
+        await Promise.all((approvers ?? []).map((approver) =>
+          createNotification(approver.id, 'Validation de lot requise', `Le lot ${batchCode} a été créé et est déjà opérationnel. Validation à effectuer.`, 'warning', 'batches')
+        ));
+      }
     }
 
     setShowModal(false);
     setForm({ driver_id: '', zone: '', batch_type: 'livraison', sales_point_ids: [], pot_entries: [] });
     setActionError(null);
+    loadAll();
+  };
+
+  const decideBatchApproval = async (batch: DeliveryBatch, decision: 'approuve' | 'rejete') => {
+    if (!batch.approval) return;
+    const { data: userData } = await supabase.auth.getUser();
+    const { error } = await supabase.from('delivery_batch_approvals')
+      .update({ status: decision, decided_by: userData.user?.id, decided_at: new Date().toISOString() })
+      .eq('id', batch.approval.id)
+      .eq('status', 'en_attente');
+    if (error) {
+      toast('La validation du lot a échoué.', 'error');
+      return;
+    }
+    await createNotification(batch.approval.requested_by, `Lot ${decision === 'approuve' ? 'approuvé' : 'rejeté'}`, `Le lot ${batch.batch_code} a été ${decision === 'approuve' ? 'approuvé' : 'rejeté'}. Il reste traçable dans l’historique.`, decision === 'approuve' ? 'success' : 'warning', 'batches');
+    toast(decision === 'approuve' ? 'Lot validé.' : 'Lot rejeté : il reste dans l’historique pour la traçabilité.', decision === 'approuve' ? 'success' : 'info');
     loadAll();
   };
 
@@ -969,14 +1016,14 @@ export default function BatchesPage() {
               Livraison opportune
             </button>
           )}
-          {canCreate && !selectMode && (
+          {canCreateBatch && !selectMode && (
             <button onClick={() => setShowModal(true)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-md hover:shadow-lg transition-all">
               <Plus className="w-5 h-5" />
               Nouvelle tournée
             </button>
           )}
-          {canCreate && !selectMode && (
+          {canSuperviseBatch && !selectMode && (
             <button onClick={() => { setSelectMode(true); setSelectedBatchIds(new Set()); }}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 text-white font-medium shadow-md hover:shadow-lg transition-all">
               <Trash2 className="w-5 h-5" />
@@ -1047,6 +1094,14 @@ export default function BatchesPage() {
                         }`}>
                           {batch.status === 'actif' ? 'En cours' : batch.status === 'cloture' ? 'Clôturée' : 'Annulée'}
                         </span>
+                        {batch.approval && (
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            batch.approval.status === 'approuve' ? 'bg-emerald-50 text-emerald-700' :
+                            batch.approval.status === 'rejete' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'
+                          }`}>
+                            {batch.approval.status === 'approuve' ? 'Validé' : batch.approval.status === 'rejete' ? 'Rejeté' : 'Validation en attente'}
+                          </span>
+                        )}
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                           batch.batch_type === 'recouvrement' ? 'bg-purple-50 text-purple-700' :
                           batch.batch_type === 'mixte' ? 'bg-indigo-50 text-indigo-700' :
@@ -1117,6 +1172,18 @@ export default function BatchesPage() {
                     <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                       <h4 className="text-sm font-semibold text-gray-700">Dépôts ({deposits.length})</h4>
                       <div className="flex gap-2 flex-wrap">
+                        {canApproveBatch && batch.approval?.status === 'en_attente' && (
+                          <>
+                            <button onClick={() => decideBatchApproval(batch, 'approuve')}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-medium hover:bg-emerald-100 transition-colors">
+                              <CheckCircle2 className="w-4 h-4" /> Valider le lot
+                            </button>
+                            <button onClick={() => decideBatchApproval(batch, 'rejete')}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 text-sm font-medium hover:bg-rose-100 transition-colors">
+                              <X className="w-4 h-4" /> Rejeter
+                            </button>
+                          </>
+                        )}
                         {canDeposit && batch.status === 'actif' && needsPots(batch.batch_type) && (
                           <button onClick={() => openDeposit(batch.id)}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 text-sm font-medium hover:bg-amber-100 transition-colors">
@@ -1131,21 +1198,21 @@ export default function BatchesPage() {
                             Recouvrer
                           </button>
                         )}
-                        {canCreate && batch.status === 'actif' && (
+                        {canSuperviseBatch && batch.status === 'actif' && (
                           <button onClick={() => openEdit(batch.id)}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition-colors">
                             <Pencil className="w-4 h-4" />
                             Modifier PDV
                           </button>
                         )}
-                        {canCreate && batch.status === 'actif' && (
+                        {canSuperviseBatch && batch.status === 'actif' && (
                           <button onClick={() => closeBatch(batch.id)}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-medium hover:bg-emerald-100 transition-colors">
                             <CheckCircle2 className="w-4 h-4" />
                             Clôturer
                           </button>
                         )}
-                        {canCreate && batch.status === 'actif' && (
+                        {canSuperviseBatch && batch.status === 'actif' && (
                           <button onClick={() => handleDelete(batch.id)}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-sm font-medium hover:bg-red-100 transition-colors">
                             <Trash2 className="w-4 h-4" />
