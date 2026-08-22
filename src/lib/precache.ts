@@ -414,7 +414,7 @@ export async function precacheAllData(onProgress?: ProgressCallback, userProfile
     {
       key: 'batches_page',
       fn: async () => {
-        const [batches, drivers, pots, points, deposits, bsp, bpt] = await Promise.all([
+        const [batches, drivers, pots, points, deposits, bsp, bpt, approvals] = await Promise.all([
           supabase.from('delivery_batches').select('*, driver:drivers(*), pot_type:pot_types(*)').order('created_at', { ascending: false }),
           supabase.from('drivers').select('*').eq('status', 'actif').order('full_name'),
           supabase.from('pot_types').select('*').eq('is_active', true).order('name'),
@@ -422,12 +422,14 @@ export async function precacheAllData(onProgress?: ProgressCallback, userProfile
           supabase.from('deposits').select('*, sales_point:sales_points(*), barcode:barcodes(*)').order('deposited_at', { ascending: false }).limit(500),
           supabase.from('batch_sales_points').select('*, sales_point:sales_points(*)'),
           supabase.from('batch_pot_types').select('*, pot_type:pot_types(*)'),
+          supabase.from('delivery_batch_approvals').select('*'),
         ]);
         const cachedBatches = (batches.data ?? []).map((batch) => ({
           ...batch,
           deposits: (deposits.data ?? []).filter((deposit) => deposit.batch_id === batch.id),
           sales_points: (bsp.data ?? []).filter((point) => point.batch_id === batch.id),
           batch_pot_types: (bpt.data ?? []).filter((potType) => potType.batch_id === batch.id),
+          approval: (approvals.data ?? []).find((approval) => approval.batch_id === batch.id),
         }));
         const stockAlerts = (pots.data ?? [])
           .filter((pot) => (pot.low_stock_threshold ?? 0) > 0 && pot.stock_quantity <= (pot.low_stock_threshold ?? 0))

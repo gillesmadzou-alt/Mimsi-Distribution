@@ -144,6 +144,18 @@ export interface DeliveryBatch {
   pot_type?: PotType;
   sales_points?: BatchSalesPoint[];
   batch_pot_types?: BatchPotType[];
+  approval?: DeliveryBatchApproval;
+}
+
+export interface DeliveryBatchApproval {
+  id: string;
+  batch_id: string;
+  status: 'en_attente' | 'approuve' | 'rejete';
+  requested_by: string;
+  requested_at: string;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_notes: string | null;
 }
 
 export interface BatchSalesPoint {
