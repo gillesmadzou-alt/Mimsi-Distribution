@@ -578,6 +578,8 @@ export interface Barcode {
   baker2_id: string;
   baker2_code: string | null;
   baker2?: Baker;
+  production_record_id: string | null;
+  production_record?: ProductionRecord;
 }
 
 export type SchedulePersonType = 'driver' | 'baker' | 'kneader';
