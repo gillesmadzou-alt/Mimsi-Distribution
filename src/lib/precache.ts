@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { cachePageData, getCachedPageData, getAllCachedData } from '@/lib/readCache';
 
 const PRECACHE_KEY = 'mimsi_precache_done';
-const PRECACHE_VERSION = 'v22';
+const PRECACHE_VERSION = 'v23';
 
 interface PrecacheProgress {
   done: number;
@@ -25,22 +25,23 @@ export async function precacheAllData(onProgress?: ProgressCallback, userProfile
     {
       key: 'dashboard',
       fn: async () => {
-        const [drivers, bakers, kneaders, batches, deposits, returns, pots, salesPoints, receivables, batchPotTypes, returnPotTypes, production, dough, expenses, stockMovements] = await Promise.all([
+        const [drivers, bakers, kneaders, batches, deposits, returns, pots, salesPoints, receivables, batchPotTypes, returnPotTypes, production, dough, expenses, stockMovements, consignments] = await Promise.all([
           supabase.from('drivers').select('*').order('full_name'),
           supabase.from('bakers').select('*').order('full_name'),
           supabase.from('kneaders').select('*').order('full_name'),
           supabase.from('delivery_batches').select('*, driver:drivers(*), pot_type:pot_types(*)').order('created_at', { ascending: false }),
-          supabase.from('deposits').select('id, quantity, amount_fcfa, batch_id, deposited_at'),
-          supabase.from('returns').select('id, quantity, batch_id, empty_pots, empty_lids, returned_at'),
+          supabase.from('deposits').select('id, quantity, amount_fcfa, batch_id, deposited_at, sales_point:sales_points(*)'),
+          supabase.from('returns').select('id, quantity, batch_id, empty_pots, empty_lids, returned_at, sales_point:sales_points(*)'),
           supabase.from('pot_types').select('*').eq('is_active', true),
           supabase.from('sales_points').select('id, quota_amount, quota_paid, quota_status, driver_id, name, zone'),
-          supabase.from('receivables').select('id, amount_fcfa, amount_paid, status, driver_id'),
+          supabase.from('receivables').select('id, amount_fcfa, amount_paid, status, driver_id, batch_id, sales_point:sales_points(*)'),
           supabase.from('batch_pot_types').select('batch_id, empty_pots, empty_lids, quantity'),
           supabase.from('return_pot_types').select('return_id, pot_type_id, quantity, empty_pots, empty_lids, madeleine_count'),
           supabase.from('production_records').select('*, baker:bakers(*), pot_type:pot_types(*), dough_delivery:dough_deliveries(*, kneader:kneaders(*))').order('production_date', { ascending: false }).limit(500),
           supabase.from('dough_deliveries').select('*, kneader:kneaders(*), baker:bakers(*)').order('delivery_date', { ascending: false }).limit(500),
           supabase.from('delivery_expenses').select('id, amount_fcfa, expense_type, batch_id, deposit_id'),
-          supabase.from('stock_movements').select('id, movement_type, quantity, pot_type_id, created_at').order('created_at', { ascending: false }).limit(200),
+          supabase.from('stock_movements').select('id, movement_type, quantity, pot_type_id, batch_id, created_at').order('created_at', { ascending: false }).limit(200),
+          supabase.from('consignments').select('id, batch_id, quantity_deposited, quantity_returned, sales_point:sales_points(*)'),
         ]);
         return {
           drivers: drivers.data ?? [], bakers: bakers.data ?? [], kneaders: kneaders.data ?? [],
@@ -48,7 +49,7 @@ export async function precacheAllData(onProgress?: ProgressCallback, userProfile
           batchPotTypes: batchPotTypes.data ?? [], returnPotTypes: returnPotTypes.data ?? [],
           pots: pots.data ?? [], salesPoints: salesPoints.data ?? [], receivables: receivables.data ?? [],
           productionRecords: production.data ?? [], doughDeliveries: dough.data ?? [],
-          deliveryExpenses: expenses.data ?? [], stockMovements: stockMovements.data ?? [],
+          deliveryExpenses: expenses.data ?? [], stockMovements: stockMovements.data ?? [], consignments: consignments.data ?? [],
         };
       },
     },
@@ -60,15 +61,17 @@ export async function precacheAllData(onProgress?: ProgressCallback, userProfile
         if (!driver) return null;
         const driverId = driver.id;
         await fetchAndCache(`dashboard_${userProfile.id}`, async () => {
-          const [batches, deposits, returns, salesPoints, receivables, batchPotTypes, returnPotTypes, expenses] = await Promise.all([
+          const [batches, deposits, returns, salesPoints, receivables, batchPotTypes, returnPotTypes, expenses, stockMovements, consignments] = await Promise.all([
             supabase.from('delivery_batches').select('*, driver:drivers(*), pot_type:pot_types(*)').eq('driver_id', driverId).order('created_at', { ascending: false }),
-            supabase.from('deposits').select('id, quantity, amount_fcfa, batch_id, deposited_at'),
-            supabase.from('returns').select('id, quantity, batch_id, empty_pots, empty_lids, returned_at'),
+            supabase.from('deposits').select('id, quantity, amount_fcfa, batch_id, deposited_at, sales_point:sales_points(*)'),
+            supabase.from('returns').select('id, quantity, batch_id, empty_pots, empty_lids, returned_at, sales_point:sales_points(*)'),
             supabase.from('sales_points').select('id, quota_amount, quota_paid, quota_status, driver_id, name, zone').eq('driver_id', driverId),
-            supabase.from('receivables').select('id, amount_fcfa, amount_paid, status, driver_id').eq('driver_id', driverId),
+            supabase.from('receivables').select('id, amount_fcfa, amount_paid, status, driver_id, batch_id, sales_point:sales_points(*)').eq('driver_id', driverId),
             supabase.from('batch_pot_types').select('batch_id, empty_pots, empty_lids, quantity'),
             supabase.from('return_pot_types').select('return_id, pot_type_id, quantity, empty_pots, empty_lids, madeleine_count'),
             supabase.from('delivery_expenses').select('id, amount_fcfa, expense_type, batch_id, deposit_id'),
+            supabase.from('stock_movements').select('id, movement_type, quantity, pot_type_id, batch_id, created_at').order('created_at', { ascending: false }).limit(200),
+            supabase.from('consignments').select('id, batch_id, quantity_deposited, quantity_returned, sales_point:sales_points(*)'),
           ]);
           const batchIds = new Set((batches.data ?? []).map((b) => b.id));
           return {
@@ -81,7 +84,8 @@ export async function precacheAllData(onProgress?: ProgressCallback, userProfile
             pots: [], salesPoints: salesPoints.data ?? [], receivables: receivables.data ?? [],
             productionRecords: [], doughDeliveries: [],
             deliveryExpenses: (expenses.data ?? []).filter((e) => e.batch_id && batchIds.has(e.batch_id)),
-            stockMovements: [],
+            stockMovements: (stockMovements.data ?? []).filter((movement) => movement.batch_id && batchIds.has(movement.batch_id)),
+            consignments: (consignments.data ?? []).filter((consignment) => consignment.batch_id && batchIds.has(consignment.batch_id)),
           };
         });
         return null;
