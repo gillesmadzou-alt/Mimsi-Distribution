@@ -5,6 +5,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+import { clearPageCache } from '@/lib/readCache';
 import {
   Plus, Search, MapPin, Phone, User as UserIcon, X, Edit2, Trash2, Store,
   Mail, Wallet, CheckCircle2, Clock, AlertCircle, PlusCircle, History, Crosshair,
@@ -65,6 +66,18 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
   const canAddPayment = (profile?.role ?? 1) >= 1;
 
   const { fetchWithCache, isOffline } = useOfflineFetch();
+
+  // A point of sale is used in several operational forms.  Clear only the
+  // dependent snapshots after a successful mutation so the next online visit
+  // always obtains the current list, without deleting unrelated offline data.
+  const refreshPointOfSaleSnapshots = async () => {
+    await Promise.all([
+      'sales_points_page', 'batches_page', 'consignments-page:v2',
+      'expenses_page', 'restock-page', 'returns-page-all', 'field_observations',
+      'receivables', 'reports-page', 'analytics-page',
+    ].map((key) => clearPageCache(key)));
+    window.dispatchEvent(new Event('mimsi:sales-points-updated'));
+  };
 
   const loadDrivers = useCallback(async () => {
     const result = await fetchWithCache('sales_points_drivers', async () => {
@@ -162,6 +175,10 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isOffline || !navigator.onLine) {
+      toast('Un point de vente doit être créé avec Internet afin d’être disponible dans les tournées, consignes et autres formulaires.', 'error');
+      return;
+    }
     const userId = (await supabase.auth.getUser()).data.user?.id;
     const payload = {
       name: form.name,
@@ -189,14 +206,17 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
       const { error } = await supabase.from('sales_points').insert(payload);
       if (error) { toast('Erreur lors de la création.', 'error'); return; }
     }
+    await refreshPointOfSaleSnapshots();
     setShowModal(false);
-    loadPoints();
+    await loadPoints();
+    toast(editing ? 'Point de vente mis à jour dans les formulaires.' : 'Point de vente créé et disponible dans les formulaires.', 'success');
   };
 
   const saveGeo = async (lat: number, lng: number) => {
     if (!geoTargetPoint) return;
     const { error } = await supabase.from('sales_points').update({ gps_lat: lat, gps_lng: lng }).eq('id', geoTargetPoint.id);
     if (error) { toast('Erreur lors de l enregistrement de la position.', 'error'); return; }
+    await refreshPointOfSaleSnapshots();
     setGeoTargetPoint(null);
     loadPoints();
   };
@@ -210,6 +230,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
     if (!zoneTargetPoint) return;
     const { error } = await supabase.from('sales_points').update({ zone: zoneInput.trim() || null }).eq('id', zoneTargetPoint.id);
     if (error) { toast('Erreur lors de l enregistrement de la zone.', 'error'); return; }
+    await refreshPointOfSaleSnapshots();
     setZoneTargetPoint(null);
     setZoneInput('');
     loadPoints();
@@ -219,6 +240,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
     if (!(await confirmDialog({ message: 'Supprimer ce point de vente ?', confirmLabel: 'Supprimer', danger: true }))) return;
     const { error } = await supabase.from('sales_points').delete().eq('id', id);
     if (error) { toast('Erreur lors de la suppression.', 'error'); return; }
+    await refreshPointOfSaleSnapshots();
     loadPoints();
   };
 

@@ -256,6 +256,7 @@ export default function ConsignmentsPage({ onNavigate }: { onNavigate?: (page: s
                   <option value="">— Choisir —</option>
                   {salesPoints.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
+                {salesPoints.length === 0 && <p className="mt-1 text-xs text-amber-700">Aucun point de vente actif. Créez-le dans « Points de vente » avec Internet, puis rouvrez ce formulaire.</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Type de pot</label>
