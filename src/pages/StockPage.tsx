@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { supabase, PotType, PotShape, POT_SHAPE_LABELS, formatFCFA, Driver, Baker, StockMovement } from '@/lib/supabase';
+import { supabase, PotType, PotShape, POT_SHAPE_LABELS, formatFCFA, Driver, Baker, StockMovement, DeliveryBatch } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { getCachedPageData, cachePageData } from '@/lib/readCache';
 import { useAuth } from '@/contexts/AuthContext';
@@ -30,6 +30,7 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
   const [pots, setPots] = useState<PotType[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [bakers, setBakers] = useState<Baker[]>([]);
+  const [batches, setBatches] = useState<DeliveryBatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -46,7 +47,7 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
 
   const [movement, setMovement] = useState({
     pot_type_id: '', stock_kind: 'ready' as StockKind, movement_type: 'entree' as 'entree' | 'attribution' | 'retour' | 'ajustement',
-    quantity: 0, notes: '', driver_id: '', baker_id: '',
+    quantity: 0, notes: '', driver_id: '', baker_id: '', batch_id: '',
   });
 
   const { fetchWithCache, isOffline } = useOfflineFetch();
@@ -90,23 +91,27 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
 
   const loadPersonnel = useCallback(async () => {
     if (isOffline || !navigator.onLine) {
-      const cached = await getCachedPageData<{drivers: Driver[]; bakers: Baker[]}>('stock:personnel');
+      const cached = await getCachedPageData<{drivers: Driver[]; bakers: Baker[]; batches: DeliveryBatch[]}>('stock:personnel');
       if (cached) {
         setDrivers(cached.data.drivers ?? []);
         setBakers(cached.data.bakers ?? []);
+        setBatches(cached.data.batches ?? []);
       }
       return;
     }
     try {
-      const [dRes, bRes] = await Promise.all([
+      const [dRes, bRes, batchRes] = await Promise.all([
         supabase.from('drivers').select('*').order('full_name'),
         supabase.from('bakers').select('*').order('full_name'),
+        supabase.from('delivery_batches').select('*').in('status', ['actif', 'cloture']).order('batch_date', { ascending: false }).limit(50),
       ]);
       const driversData = dRes.data ?? [];
       const bakersData = bRes.data ?? [];
+      const batchesData = batchRes.data ?? [];
       setDrivers(driversData);
       setBakers(bakersData);
-      await cachePageData('stock:personnel', { drivers: driversData, bakers: bakersData });
+      setBatches(batchesData);
+      await cachePageData('stock:personnel', { drivers: driversData, bakers: bakersData, batches: batchesData });
     } catch {
       setLoadError('Erreur lors du chargement du personnel.');
     }
@@ -146,7 +151,7 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
   const openMovement = (pot?: PotType) => {
     setMovement({
       pot_type_id: pot?.id ?? '', stock_kind: 'ready', movement_type: 'entree',
-      quantity: 0, notes: '', driver_id: '', baker_id: '',
+      quantity: 0, notes: '', driver_id: '', baker_id: '', batch_id: '',
     });
     setShowMovement(true);
   };
@@ -173,6 +178,15 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
     }
     if (movement.movement_type === 'entree' && movement.baker_id) {
       insertData.baker_id = movement.baker_id;
+    }
+    if (movement.movement_type === 'retour') {
+      if (!movement.batch_id) {
+        toast('Sélectionnez le lot d’origine pour tracer ce retour.', 'error');
+        return;
+      }
+      insertData.batch_id = movement.batch_id;
+      const batch = batches.find((candidate) => candidate.id === movement.batch_id);
+      if (batch?.driver_id) insertData.driver_id = batch.driver_id;
     }
 
     const { error: mvErr } = await supabase.from('stock_movements').insert(insertData);
@@ -201,7 +215,7 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
     }
     const { data } = await supabase
       .from('stock_movements')
-      .select('*, pot_type:pot_types(name), driver:drivers(full_name), baker:bakers(full_name)')
+      .select('*, pot_type:pot_types(name), driver:drivers(full_name), baker:bakers(full_name), batch:delivery_batches(batch_code, batch_date, driver:drivers(full_name))')
       .order('created_at', { ascending: false })
       .limit(50);
     const history = (data as StockMovement[]) ?? [];
@@ -223,6 +237,20 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
 
   const showDriverField = movement.movement_type === 'attribution';
   const showBakerField = movement.movement_type === 'entree';
+  const showBatchField = movement.movement_type === 'retour';
+  const today = new Date().toISOString().slice(0, 10);
+  const todayBatches = batches.filter((batch) => batch.batch_date === today);
+  const recentBatches = batches.filter((batch) => batch.batch_date !== today);
+
+  const selectReturnBatch = (batchId: string) => {
+    const batch = batches.find((candidate) => candidate.id === batchId);
+    setMovement({
+      ...movement,
+      batch_id: batchId,
+      pot_type_id: batch?.pot_type_id ?? movement.pot_type_id,
+      driver_id: batch?.driver_id ?? movement.driver_id,
+    });
+  };
 
   return (
     <div className="space-y-4">
@@ -471,6 +499,28 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
                 </div>
               )}
 
+              {showBatchField && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Lot d’origine du retour</label>
+                  <select required value={movement.batch_id} onChange={(e) => selectReturnBatch(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none">
+                    <option value="">— Choisir le lot —</option>
+                    {todayBatches.length > 0 && (
+                      <optgroup label="Lots du jour">
+                        {todayBatches.map((batch) => <option key={batch.id} value={batch.id}>{batch.batch_code} · {drivers.find((driver) => driver.id === batch.driver_id)?.full_name ?? 'Commercial non renseigné'}</option>)}
+                      </optgroup>
+                    )}
+                    {recentBatches.length > 0 && (
+                      <optgroup label="Lots récents">
+                        {recentBatches.map((batch) => <option key={batch.id} value={batch.id}>{batch.batch_code} · {new Date(batch.batch_date).toLocaleDateString('fr-FR')} · {drivers.find((driver) => driver.id === batch.driver_id)?.full_name ?? 'Commercial non renseigné'}</option>)}
+                      </optgroup>
+                    )}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">Le type de pot et le commercial du lot sont repris automatiquement pour assurer la traçabilité.</p>
+                  {batches.length === 0 && <p className="mt-1 text-xs text-amber-700">Aucun lot actif ou clôturé n’est disponible hors ligne. Connectez-vous une fois pour synchroniser les lots.</p>}
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Quantité</label>
                 <input type="number" min={1} required value={movement.quantity || ''} onChange={(e) => setMovement({ ...movement, quantity: Number(e.target.value) })}
@@ -520,6 +570,7 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
                         <p className="text-xs text-gray-500">
                           {new Date(m.created_at).toLocaleString('fr-FR')}
                           {personLabel && ` · ${m.driver ? 'Commercial' : 'Pétrisseur'}: ${personLabel}`}
+                          {m.batch && ` · Lot : ${m.batch.batch_code}`}
                           {m.notes ? ` · ${m.notes}` : ''}
                         </p>
                       </div>

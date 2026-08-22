@@ -234,6 +234,7 @@ export interface StockMovement {
   quantity: number;
   driver_id: string | null;
   baker_id: string | null;
+  batch_id: string | null;
   reference_id: string | null;
   notes: string | null;
   created_by: string | null;
@@ -241,6 +242,7 @@ export interface StockMovement {
   pot_type?: PotType;
   driver?: Driver;
   baker?: Baker;
+  batch?: DeliveryBatch;
 }
 
 export interface StockHandover {
