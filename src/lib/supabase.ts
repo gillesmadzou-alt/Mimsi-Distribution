@@ -603,6 +603,24 @@ export interface Barcode {
   baker2?: Baker;
   production_record_id: string | null;
   production_record?: ProductionRecord;
+  deposit_barcodes?: DepositBarcodeLink[];
+}
+
+export interface DepositBarcodeLink {
+  id: string;
+  deposit_id: string;
+  barcode_id: string;
+  scanned_at: string;
+  scanned_by: string | null;
+  created_at: string;
+  deposit?: {
+    id: string;
+    deposited_at: string;
+    sales_point?: Pick<SalesPoint, 'id' | 'name'>;
+    batch?: Pick<DeliveryBatch, 'id' | 'batch_code'> & {
+      driver?: Pick<Driver, 'id' | 'full_name'>;
+    };
+  };
 }
 
 export type SchedulePersonType = 'driver' | 'baker' | 'kneader';

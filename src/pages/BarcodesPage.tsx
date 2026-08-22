@@ -73,7 +73,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
 
     const [potRes, barRes, bakerRes, productionRes] = await Promise.all([
       supabase.from('pot_types').select('*').order('name'),
-      supabase.from('barcodes').select('*, pot_type:pot_types(*), baker:bakers!baker_id(*), baker2:bakers!baker2_id(*), production_record:production_records(*, baker:bakers(*))').order('created_at', { ascending: false }),
+      supabase.from('barcodes').select('*, pot_type:pot_types(*), baker:bakers!baker_id(*), baker2:bakers!baker2_id(*), production_record:production_records(*, baker:bakers(*)), deposit_barcodes(id, scanned_at, deposit:deposits(id, deposited_at, sales_point:sales_points(id, name), batch:delivery_batches(id, batch_code, driver:drivers(id, full_name))))').order('created_at', { ascending: false }),
       supabase.from('bakers').select('*').eq('status', 'actif').order('full_name'),
       supabase.from('production_records').select('*, baker:bakers(*), pot_type:pot_types(*)').order('production_date', { ascending: false }),
     ]);
@@ -90,7 +90,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
   }, [isOffline]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
-  useRealtimeSubscription('barcodes-page', ['barcodes', 'pot_types', 'bakers'], loadAll);
+  useRealtimeSubscription('barcodes-page', ['barcodes', 'pot_types', 'bakers', 'deposit_barcodes'], loadAll);
 
   useEffect(() => {
     barcodes.forEach((b) => {
@@ -456,13 +456,26 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
             Codes utilisés ({used.length})
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            {used.map((b) => (
-              <div key={b.id} className="border border-gray-200 rounded-xl p-3 flex flex-col items-center gap-2 opacity-60">
-                <canvas ref={(el) => { canvasRefs.current[b.id] = el; }} className="w-full" />
-                <div className="text-xs text-gray-500 font-mono text-center break-all">{b.code}</div>
-                <div className="text-xs text-gray-400">{b.pot_type?.name ?? '—'}</div>
-              </div>
-            ))}
+            {used.map((b) => {
+              const trace = b.deposit_barcodes?.[0];
+              return (
+                <div key={b.id} className="border border-gray-200 rounded-xl p-3 flex flex-col items-center gap-2 opacity-60">
+                  <canvas ref={(el) => { canvasRefs.current[b.id] = el; }} className="w-full" />
+                  <div className="text-xs text-gray-500 font-mono text-center break-all">{b.code}</div>
+                  <div className="text-xs text-gray-400">{b.pot_type?.name ?? '—'}</div>
+                  {trace ? (
+                    <div className="w-full rounded-lg bg-emerald-50 px-2 py-1.5 text-[10px] leading-4 text-emerald-800">
+                      <p>Lot : {trace.deposit?.batch?.batch_code ?? '—'}</p>
+                      <p>PDV : {trace.deposit?.sales_point?.name ?? '—'}</p>
+                      <p>Commercial : {trace.deposit?.batch?.driver?.full_name ?? '—'}</p>
+                      <p>{new Date(trace.scanned_at).toLocaleString('fr-FR')}</p>
+                    </div>
+                  ) : b.used_at ? (
+                    <div className="text-[10px] text-gray-400">Utilisé le {new Date(b.used_at).toLocaleDateString('fr-FR')}</div>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

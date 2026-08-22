@@ -610,21 +610,20 @@ export default function BatchesPage() {
         .order('created_at', { ascending: false }).limit(1).single();
 
       if (depositId.data) {
-        for (const sb of scannedBarcodes) {
-          if (sb.barcode) {
-            const { count } = await supabase.from('barcodes')
-              .update({ is_used: true, used_at: new Date().toISOString() })
-              .eq('id', sb.barcode.id)
-              .eq('is_used', false);
-            if (count === 0) {
-              console.warn(`Code à barres ${sb.code} déjà utilisé par un autre dépôt — ignoré`);
-            }
+        const barcodeIds = [...new Set(
+          scannedBarcodes.flatMap((scan) => scan.barcode ? [scan.barcode.id] : []),
+        )];
+        if (barcodeIds.length > 0) {
+          const { error: barcodeLinkError } = await supabase
+            .from('deposit_barcodes')
+            .insert(barcodeIds.map((barcode_id) => ({
+              deposit_id: depositId.data.id,
+              barcode_id,
+            })));
+          if (barcodeLinkError) {
+            console.error('barcode delivery trace failed:', barcodeLinkError);
+            toast('Un ou plusieurs codes n’ont pas pu être liés au dépôt. Vérifiez qu’ils ne sont pas déjà utilisés.', 'error');
           }
-        }
-        if (scannedBarcodes.length > 0 && scannedBarcodes[0].barcode) {
-          await supabase.from('deposits')
-            .update({ barcode_id: scannedBarcodes[0].barcode.id })
-            .eq('id', depositId.data.id);
         }
         if (scannedBarcodes.length < depositForm.quantity) {
           const unscannedCount = depositForm.quantity - scannedBarcodes.length;
