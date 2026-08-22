@@ -596,7 +596,9 @@ export default function BatchesPage() {
         }
       }
     } else if (result.offline) {
-      toast('Hors-ligne : votre dépôt a été enregistré sur ce téléphone. Il sera synchronisé automatiquement dès le retour de la connexion.', 'info');
+      toast('Hors-ligne : votre dépôt a été enregistré sur ce téléphone. La consigne et le commercial de la tournée seront synchronisés automatiquement au retour de la connexion.', 'info');
+    } else if (!result.queued) {
+      toast('Dépôt validé : la consigne du point de vente a été mise à jour avec le commercial de la tournée.', 'success');
     }
     if (!result.offline) syncNow();
 
