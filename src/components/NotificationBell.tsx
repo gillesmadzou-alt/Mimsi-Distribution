@@ -109,6 +109,9 @@ export default function NotificationBell({ onNavigate }: { onNavigate: (page: Pa
   return (
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen(!open)}
+        aria-label="Ouvrir les notifications"
+        aria-expanded={open}
+        aria-haspopup="dialog"
         className="relative p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors">
         <Bell className="w-5 h-5" />
         {unreadCount > 0 && (
@@ -119,10 +122,14 @@ export default function NotificationBell({ onNavigate }: { onNavigate: (page: Pa
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-96 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 max-h-[32rem] overflow-y-auto">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
+        <div
+          role="dialog"
+          aria-label="Notifications"
+          className="fixed inset-x-3 top-16 bottom-3 z-50 flex w-auto flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-xl sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96 sm:max-h-[32rem]"
+        >
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3 border-b border-gray-100 bg-white">
             <h3 className="font-semibold text-gray-900 text-sm">Notifications</h3>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 whitespace-nowrap">
               <button
                 onClick={() => { onNavigate('notification-archive'); setOpen(false); }}
                 className="text-xs text-gray-500 hover:text-amber-700 font-medium"
@@ -138,7 +145,7 @@ export default function NotificationBell({ onNavigate }: { onNavigate: (page: Pa
           </div>
 
           {/* Priority filter bar */}
-          <div className="flex items-center gap-1.5 px-4 py-2 border-b border-gray-100 sticky top-[3.25rem] bg-white z-10">
+          <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto px-4 py-2 border-b border-gray-100 bg-white [scrollbar-width:thin]">
             <button onClick={() => setPriorityFilter('all')}
               className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all ${priorityFilter === 'all' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
               Toutes ({notifications.length})
@@ -160,7 +167,7 @@ export default function NotificationBell({ onNavigate }: { onNavigate: (page: Pa
           {filtered.length === 0 ? (
             <div className="px-4 py-8 text-center text-gray-400 text-sm">Aucune notification</div>
           ) : (
-            <div className="divide-y divide-gray-50">
+            <div className="min-h-0 flex-1 divide-y divide-gray-50 overflow-y-auto overscroll-contain">
               {filtered.map((n) => {
                 const Icon = TYPE_ICONS[n.type] ?? Info;
                 return (
@@ -169,19 +176,19 @@ export default function NotificationBell({ onNavigate }: { onNavigate: (page: Pa
                     onClick={() => handleClick(n)}>
                     <Icon className={`w-5 h-5 flex-shrink-0 mt-0.5 ${TYPE_STYLES[n.type]}`} />
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-gray-900">{n.title}</p>
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${PRIORITY_BADGE[n.priority]}`}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="break-words text-sm font-medium text-gray-900">{n.title}</p>
+                        <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${PRIORITY_BADGE[n.priority]}`}>
                           {PRIORITY_LABEL[n.priority]}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-500 mt-0.5">{n.message}</p>
+                      <p className="break-words text-xs text-gray-500 mt-0.5">{n.message}</p>
                       <p className="text-xs text-gray-400 mt-1">{new Date(n.created_at).toLocaleString('fr-FR')}</p>
                     </div>
                     <button
                       type="button"
                       onClick={(event) => archiveNotification(event, n.id)}
-                      className="p-1.5 rounded-lg text-gray-400 hover:text-amber-700 hover:bg-amber-50 transition-colors"
+                      className="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-amber-700 hover:bg-amber-50 transition-colors"
                       title="Archiver la notification"
                       aria-label="Archiver la notification"
                     >
