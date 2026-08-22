@@ -9,7 +9,9 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>
 );
 
-const SW_VERSION = 'v24';
+// Change this value for every production PWA release. It gives browsers a
+// new service-worker URL, even when they retained an older script in cache.
+const SW_VERSION = 'v25';
 
 if ('serviceWorker' in navigator) {
   let refreshing = false;
@@ -61,7 +63,7 @@ if ('serviceWorker' in navigator) {
   };
 
   const registerSW = () => {
-    navigator.serviceWorker.register(`/sw.js?v=${SW_VERSION}`).then((reg) => {
+    navigator.serviceWorker.register(`/sw.js?v=${SW_VERSION}`, { updateViaCache: 'none' }).then((reg) => {
       if (reg.waiting && navigator.serviceWorker.controller) {
         showUpdateDialog();
       }
