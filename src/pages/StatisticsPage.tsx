@@ -34,8 +34,12 @@ export default function StatisticsPage({ onNavigate }: { onNavigate?: (page: str
   const [productionRecords, setProductionRecords] = useState<ProductionRecord[]>([]);
   const [doughDeliveries, setDoughDeliveries] = useState<DoughDelivery[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const { fetchWithCache, isOffline } = useOfflineFetch();
+  // A mobile device can be shared by several employees. Keep each person's
+  // statistical data in a separate offline entry.
+  const statisticsCacheKey = `statistics-page:${profile?.id ?? 'anonymous'}`;
 
   const startDate = useMemo(() => {
     if (!periodRange) return new Date().toISOString().slice(0, 10);
@@ -49,7 +53,8 @@ export default function StatisticsPage({ onNavigate }: { onNavigate?: (page: str
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const result = await fetchWithCache('statistics-page', async () => {
+    setLoadError(null);
+    const result = await fetchWithCache(statisticsCacheKey, async () => {
       const [
         driversRes, kneadersRes, bakersRes, batchesRes, depositsRes, returnsRes, receivablesRes, prodRes, doughRes,
       ] = await Promise.all([
@@ -63,6 +68,11 @@ export default function StatisticsPage({ onNavigate }: { onNavigate?: (page: str
         supabase.from('production_records').select('*, baker:bakers(*), pot_type:pot_types(*)').order('production_date', { ascending: false }).limit(500),
         supabase.from('dough_deliveries').select('*, kneader:kneaders(*), baker:bakers(*)').order('delivery_date', { ascending: false }).limit(500),
       ]);
+
+      const firstError = [driversRes, kneadersRes, bakersRes, batchesRes, depositsRes, returnsRes, receivablesRes, prodRes, doughRes]
+        .map((response) => response.error)
+        .find(Boolean);
+      if (firstError) throw firstError;
 
       return {
         drivers: driversRes.data ?? [],
@@ -87,8 +97,9 @@ export default function StatisticsPage({ onNavigate }: { onNavigate?: (page: str
     setReceivables(data?.receivables ?? []);
     setProductionRecords(data?.productionRecords ?? []);
     setDoughDeliveries(data?.doughDeliveries ?? []);
+    setLoadError(result.error);
     setLoading(false);
-  }, [fetchWithCache]);
+  }, [fetchWithCache, statisticsCacheKey]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -273,6 +284,16 @@ export default function StatisticsPage({ onNavigate }: { onNavigate?: (page: str
     return <div className="flex items-center justify-center py-20 text-gray-400">Chargement…</div>;
   }
 
+  if (loadError && !isOffline && batches.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-20 text-center text-gray-500">
+        <CloudOff className="h-12 w-12 text-gray-300" />
+        <p className="text-sm">Les statistiques n’ont pas pu être chargées. Vérifiez votre connexion puis réessayez.</p>
+        <button onClick={loadData} className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-medium text-white">Réessayer</button>
+      </div>
+    );
+  }
+
   if (isOffline && batches.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-gray-400">
@@ -283,7 +304,7 @@ export default function StatisticsPage({ onNavigate }: { onNavigate?: (page: str
   }
 
   if (batches.length === 0 && !isOffline) {
-    return <div className="flex items-center justify-center py-20 text-gray-400">Chargement…</div>;
+    return <div className="flex items-center justify-center py-20 text-gray-400">Aucune donnée statistique disponible pour le moment.</div>;
   }
 
   const kpiCards = [

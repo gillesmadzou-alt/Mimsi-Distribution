@@ -9,7 +9,7 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>
 );
 
-const SW_VERSION = 'v23';
+const SW_VERSION = 'v24';
 
 if ('serviceWorker' in navigator) {
   let refreshing = false;

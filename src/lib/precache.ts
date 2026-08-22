@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { cachePageData, getCachedPageData, getAllCachedData } from '@/lib/readCache';
 
 const PRECACHE_KEY = 'mimsi_precache_done';
-const PRECACHE_VERSION = 'v21';
+const PRECACHE_VERSION = 'v22';
 
 interface PrecacheProgress {
   done: number;
@@ -88,7 +88,7 @@ export async function precacheAllData(onProgress?: ProgressCallback, userProfile
       },
     },
     {
-      key: 'statistics-page',
+      key: `statistics-page:${userProfile?.id ?? 'anonymous'}`,
       fn: async () => {
         const [drivers, kneaders, bakers, batches, deposits, returns, receivables, prod, dough] = await Promise.all([
           supabase.from('drivers').select('*').order('full_name'),
@@ -101,6 +101,10 @@ export async function precacheAllData(onProgress?: ProgressCallback, userProfile
           supabase.from('production_records').select('*, baker:bakers(*), pot_type:pot_types(*)').order('production_date', { ascending: false }).limit(500),
           supabase.from('dough_deliveries').select('*, kneader:kneaders(*), baker:bakers(*)').order('delivery_date', { ascending: false }).limit(500),
         ]);
+        const firstError = [drivers, kneaders, bakers, batches, deposits, returns, receivables, prod, dough]
+          .map((response) => response.error)
+          .find(Boolean);
+        if (firstError) throw firstError;
         return {
           drivers: drivers.data ?? [], kneaders: kneaders.data ?? [], bakers: bakers.data ?? [],
           batches: batches.data ?? [], deposits: deposits.data ?? [], returns: returns.data ?? [],
