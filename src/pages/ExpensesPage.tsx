@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { supabase, formatFCFA, EXPENSE_TYPE_LABELS, type DeliveryExpense, type ExpenseType, type SalesPoint } from '@/lib/supabase';
+import { supabase, formatFCFA, EXPENSE_TYPE_LABELS, type DeliveryExpense, type Driver, type ExpenseType, type SalesPoint } from '@/lib/supabase';
 import { downloadExcelReport, downloadPdfReport } from '@/lib/exportUtils';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { mergePendingSalesPoints } from '@/lib/offlineSalesPoints';
@@ -11,6 +11,7 @@ type PeriodFilter = 'today' | 'month' | 'year' | 'custom' | 'all';
 export default function ExpensesPage({ onNavigate }: { onNavigate?: (page: string) => void }) {
   const [expenses, setExpenses] = useState<DeliveryExpense[]>([]);
   const [salesPoints, setSalesPoints] = useState<SalesPoint[]>([]);
+  const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [groupBy, setGroupBy] = useState<GroupBy>('day');
@@ -22,6 +23,7 @@ export default function ExpensesPage({ onNavigate }: { onNavigate?: (page: strin
   const [customEnd, setCustomEnd] = useState('');
   const [salesPointFilter, setSalesPointFilter] = useState<string>('');
   const [zoneFilter, setZoneFilter] = useState<string>('');
+  const [driverFilter, setDriverFilter] = useState<string>('');
 
   const { fetchWithCache, isOffline } = useOfflineFetch();
 
@@ -29,20 +31,26 @@ export default function ExpensesPage({ onNavigate }: { onNavigate?: (page: strin
     setLoading(true);
     setLoadError(null);
     const result = await fetchWithCache('expenses_page', async () => {
-      const [expRes, spRes] = await Promise.all([
+      const [expRes, spRes, driverRes] = await Promise.all([
         supabase
           .from('delivery_expenses')
           .select('*, sales_point:sales_points(*), driver:drivers(*), batch:delivery_batches(batch_code)')
           .order('expense_date', { ascending: false })
           .order('created_at', { ascending: false }),
         supabase.from('sales_points').select('*').eq('is_active', true).order('name'),
+        supabase.from('drivers').select('*').eq('status', 'actif').order('full_name'),
       ]);
       if (expRes.error) throw expRes.error;
-      return { expenses: (expRes.data as DeliveryExpense[]) ?? [], salesPoints: (spRes.data as SalesPoint[]) ?? [] };
+      return {
+        expenses: (expRes.data as DeliveryExpense[]) ?? [],
+        salesPoints: (spRes.data as SalesPoint[]) ?? [],
+        drivers: (driverRes.data as Driver[]) ?? [],
+      };
     });
     if (result.data) {
       setExpenses(result.data.expenses);
       setSalesPoints(await mergePendingSalesPoints(result.data.salesPoints));
+      setDrivers(result.data.drivers);
     } else {
       setLoadError(result.error ?? 'Erreur lors du chargement des depenses.');
     }
@@ -100,9 +108,11 @@ export default function ExpensesPage({ onNavigate }: { onNavigate?: (page: strin
       if (salesPointFilter && exp.sales_point_id !== salesPointFilter) return false;
       // Zone filter
       if (zoneFilter && exp.sales_point?.zone !== zoneFilter) return false;
+      // Commercial filter
+      if (driverFilter && exp.driver_id !== driverFilter) return false;
       return true;
     });
-  }, [expenses, dateRange, salesPointFilter, zoneFilter]);
+  }, [expenses, dateRange, salesPointFilter, zoneFilter, driverFilter]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, DeliveryExpense[]>();
@@ -150,7 +160,7 @@ export default function ExpensesPage({ onNavigate }: { onNavigate?: (page: strin
     all: 'Toutes les périodes',
   };
 
-  const hasActiveFilters = salesPointFilter || zoneFilter || period !== 'all';
+  const hasActiveFilters = salesPointFilter || zoneFilter || driverFilter || period !== 'all';
 
   const resetFilters = () => {
     setPeriod('all');
@@ -158,6 +168,7 @@ export default function ExpensesPage({ onNavigate }: { onNavigate?: (page: strin
     setCustomEnd('');
     setSalesPointFilter('');
     setZoneFilter('');
+    setDriverFilter('');
   };
 
   // Export functions
@@ -192,6 +203,7 @@ export default function ExpensesPage({ onNavigate }: { onNavigate?: (page: strin
     { label: 'Période', value: periodLabel[period] + (period === 'custom' && customStart ? ` (${customStart}${customEnd ? ' → ' + customEnd : ''})` : '') },
     { label: 'Point de vente', value: salesPointFilter ? salesPoints.find((sp) => sp.id === salesPointFilter)?.name ?? '—' : 'Tous' },
     { label: 'Zone', value: zoneFilter || 'Toutes' },
+    { label: 'Commercial', value: driverFilter ? drivers.find((driver) => driver.id === driverFilter)?.full_name ?? '—' : 'Tous' },
     { label: 'Nombre de dépenses', value: String(filtered.length) },
     { label: 'Total', value: formatFCFA(grandTotal) },
   ];
@@ -209,7 +221,7 @@ export default function ExpensesPage({ onNavigate }: { onNavigate?: (page: strin
   const handleExportPdf = () => {
     downloadPdfReport({
       title: 'Dépenses de livraison',
-      subtitle: `${periodLabel[period]}${zoneFilter ? ` · Zone: ${zoneFilter}` : ''}${salesPointFilter ? ` · PDV: ${salesPoints.find((sp) => sp.id === salesPointFilter)?.name ?? ''}` : ''}`,
+      subtitle: `${periodLabel[period]}${zoneFilter ? ` · Zone: ${zoneFilter}` : ''}${salesPointFilter ? ` · PDV: ${salesPoints.find((sp) => sp.id === salesPointFilter)?.name ?? ''}` : ''}${driverFilter ? ` · Commercial: ${drivers.find((driver) => driver.id === driverFilter)?.full_name ?? ''}` : ''}`,
       columns: exportColumns,
       rows: buildExportRows(),
       summary: exportSummary,
@@ -317,6 +329,23 @@ export default function ExpensesPage({ onNavigate }: { onNavigate?: (page: strin
               ))}
             </select>
           </div>
+
+          {/* Commercial filter */}
+          <div className="flex-1 min-w-[180px]">
+            <label className="block text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1">
+              <Users className="w-3.5 h-3.5" /> Commercial
+            </label>
+            <select
+              value={driverFilter}
+              onChange={(e) => setDriverFilter(e.target.value)}
+              className="w-full px-3 py-1.5 rounded-lg border border-gray-200 text-sm outline-none focus:border-amber-500 bg-white"
+            >
+              <option value="">Tous les commerciaux</option>
+              {drivers.map((driver) => (
+                <option key={driver.id} value={driver.id}>{driver.full_name}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {hasActiveFilters && (
@@ -359,6 +388,7 @@ export default function ExpensesPage({ onNavigate }: { onNavigate?: (page: strin
           <span className="text-amber-100">{filtered.length} dépense(s)</span>
           <span className="text-amber-100">{grouped.size} groupe(s)</span>
           {zoneFilter && <span className="text-amber-100">Zone: {zoneFilter}</span>}
+          {driverFilter && <span className="text-amber-100">Commercial: {drivers.find((driver) => driver.id === driverFilter)?.full_name ?? '—'}</span>}
         </div>
       </div>
 
