@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase, RestockRequest, SalesPoint, PotType, formatFCFA } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
+import { mergePendingSalesPoints } from '@/lib/offlineSalesPoints';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import {
@@ -49,7 +50,7 @@ export default function RestockPage({ onNavigate }: { onNavigate?: (page: string
 
     if (result.data) {
       setRequests(Array.isArray(result.data.requests) ? result.data.requests : []);
-      setSalesPoints(Array.isArray(result.data.salesPoints) ? result.data.salesPoints : []);
+      setSalesPoints(await mergePendingSalesPoints(Array.isArray(result.data.salesPoints) ? result.data.salesPoints : []));
       setPotTypes(Array.isArray(result.data.potTypes) ? result.data.potTypes : []);
     }
     setLoading(false);

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase, Baker, Consignment, SalesPoint, DeliveryBatch, Driver, PotType, ProductionRecord } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { getBrazzavilleArrondissementOptions, sameArrondissement } from '@/lib/locationReferences';
+import { mergePendingSalesPoints } from '@/lib/offlineSalesPoints';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Package, Plus, X, Undo2, MapPin, AlertTriangle, CloudOff
@@ -52,7 +53,7 @@ export default function ConsignmentsPage({ onNavigate }: { onNavigate?: (page: s
     });
     if (result.data) {
       setConsignments(Array.isArray(result.data.consignments) ? result.data.consignments as ConsignmentView[] : []);
-      setSalesPoints(Array.isArray(result.data.salesPoints) ? result.data.salesPoints : []);
+      setSalesPoints(await mergePendingSalesPoints(Array.isArray(result.data.salesPoints) ? result.data.salesPoints : []));
       setBatches(Array.isArray(result.data.batches) ? result.data.batches : []);
       setDrivers(Array.isArray(result.data.drivers) ? result.data.drivers : []);
       setBakers(Array.isArray(result.data.bakers) ? result.data.bakers : []);
