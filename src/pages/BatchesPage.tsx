@@ -734,7 +734,7 @@ export default function BatchesPage() {
 
     const { data: barcode, error } = await supabase
       .from('barcodes')
-      .select('*, pot_type:pot_types(*)')
+      .select('*, pot_type:pot_types(*), production_record:production_records(*, baker:bakers(*))')
       .eq('code', code)
       .maybeSingle();
 
@@ -757,6 +757,9 @@ export default function BatchesPage() {
     }
 
     setScannedBarcodes((prev) => [...prev, { code, barcode: barcode as BarcodeType }]);
+    if (barcode.production_record) {
+      toast(`Lot identifié : ${barcode.production_record.pot_type?.name ?? barcode.pot_type?.name ?? 'pot'} produit par ${barcode.production_record.baker?.full_name ?? 'pétrisseur inconnu'} le ${new Date(barcode.production_record.production_date).toLocaleDateString('fr-FR')}.`, 'success');
+    }
     if (scanTarget == null) {
       setDepositForm((prev) => ({ ...prev, quantity: prev.quantity + 1 }));
     }

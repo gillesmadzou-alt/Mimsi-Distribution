@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { supabase, PotType, Barcode as BarcodeType, Baker, formatFCFA, generateBakerCode } from '@/lib/supabase';
+import { supabase, PotType, Barcode as BarcodeType, Baker, ProductionRecord, formatFCFA, generateBakerCode } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { jsPDF } from 'jspdf';
 import JsBarcode from 'jsbarcode';
@@ -33,16 +33,21 @@ function generateCode(index: number, baker1Code?: string, baker2Code?: string): 
   return `${prefix}POT-${random}-${String(index).padStart(3, '0')}`;
 }
 
+function generateLotCode(record: ProductionRecord): string {
+  return `LOT-${record.production_date.replaceAll('-', '')}-${record.id.slice(0, 8).toUpperCase()}`;
+}
+
 export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: string) => void }) {
   const { profile, offlineMode, manualOffline } = useAuth();
   const { isOnline: online } = useSync();
   const isOffline = offlineMode || manualOffline || !navigator.onLine;
   const [potTypes, setPotTypes] = useState<PotType[]>([]);
   const [bakers, setBakers] = useState<Baker[]>([]);
+  const [productionRecords, setProductionRecords] = useState<ProductionRecord[]>([]);
   const [barcodes, setBarcodes] = useState<BarcodeType[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [form, setForm] = useState({ potTypeId: '', quantity: 1, notes: '', baker1Id: '', baker2Id: '' });
+  const [form, setForm] = useState({ potTypeId: '', quantity: 1, notes: '', baker1Id: '', baker2Id: '', productionRecordId: '' });
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetting, setResetting] = useState(false);
   const canvasRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
@@ -66,14 +71,16 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
       return;
     }
 
-    const [potRes, barRes, bakerRes] = await Promise.all([
+    const [potRes, barRes, bakerRes, productionRes] = await Promise.all([
       supabase.from('pot_types').select('*').order('name'),
-      supabase.from('barcodes').select('*, pot_type:pot_types(*), baker:bakers!baker_id(*), baker2:bakers!baker2_id(*)').order('created_at', { ascending: false }),
+      supabase.from('barcodes').select('*, pot_type:pot_types(*), baker:bakers!baker_id(*), baker2:bakers!baker2_id(*), production_record:production_records(*, baker:bakers(*))').order('created_at', { ascending: false }),
       supabase.from('bakers').select('*').eq('status', 'actif').order('full_name'),
+      supabase.from('production_records').select('*, baker:bakers(*), pot_type:pot_types(*)').order('production_date', { ascending: false }),
     ]);
     setPotTypes(potRes.data ?? []);
     setBarcodes(barRes.data ?? []);
     setBakers(bakerRes.data ?? []);
+    setProductionRecords(productionRes.data ?? []);
     setLoading(false);
     try { await cachePageData('barcodes-page', { potTypes: potRes.data ?? [], bakers: bakerRes.data ?? [] }); } catch { /* ignore */ }
 
@@ -97,21 +104,23 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
     if (!form.potTypeId || form.quantity < 1) return;
 
     setGenerating(true);
-    const baker1 = bakers.find((b) => b.id === form.baker1Id);
+    const productionRecord = productionRecords.find((record) => record.id === form.productionRecordId);
+    const baker1 = productionRecord?.baker ?? bakers.find((b) => b.id === form.baker1Id);
     const baker2 = bakers.find((b) => b.id === form.baker2Id);
     const baker1Code = baker1 ? generateBakerCode(baker1.full_name) : null;
     const baker2Code = baker2 ? generateBakerCode(baker2.full_name) : null;
 
-    const rows = Array.from({ length: form.quantity }, (_, i) => ({
-      code: generateCode(i + 1, baker1Code ?? undefined, baker2Code ?? undefined),
-      pot_type_id: form.potTypeId,
-      quantity: 1,
+    const rows = Array.from({ length: productionRecord ? 1 : form.quantity }, (_, i) => ({
+      code: productionRecord ? generateLotCode(productionRecord) : generateCode(i + 1, baker1Code ?? undefined, baker2Code ?? undefined),
+      pot_type_id: productionRecord?.pot_type_id ?? form.potTypeId,
+      quantity: productionRecord?.quantity ?? 1,
       notes: form.notes || null,
       is_used: false,
       baker_id: form.baker1Id || null,
       baker_code: baker1Code,
       baker2_id: form.baker2Id || null,
       baker2_code: baker2Code,
+      production_record_id: productionRecord?.id ?? null,
     }));
 
     if (!isOnline()) {
@@ -136,12 +145,12 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
       } catch (err) {
         console.error('offline barcode queue failed:', err);
       }
-      setForm({ potTypeId: '', quantity: 1, notes: '', baker1Id: '', baker2Id: '' });
+      setForm({ potTypeId: '', quantity: 1, notes: '', baker1Id: '', baker2Id: '', productionRecordId: '' });
       setGenerating(false);
       return;
     }
 
-    const { data, error } = await supabase.from('barcodes').insert(rows).select('*, pot_type:pot_types(*), baker:bakers!baker_id(*), baker2:bakers!baker2_id(*)');
+    const { data, error } = await supabase.from('barcodes').insert(rows).select('*, pot_type:pot_types(*), baker:bakers!baker_id(*), baker2:bakers!baker2_id(*), production_record:production_records(*, baker:bakers(*))');
     if (error) {
       console.error('barcode insert failed:', error);
       setGenerating(false);
@@ -151,7 +160,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
       setBarcodes((prev) => [...data, ...prev]);
       for (const b of data) { try { await addCachedBarcode(b); } catch { /* ignore */ } }
     }
-    setForm({ potTypeId: '', quantity: 1, notes: '', baker1Id: '', baker2Id: '' });
+    setForm({ potTypeId: '', quantity: 1, notes: '', baker1Id: '', baker2Id: '', productionRecordId: '' });
     setGenerating(false);
   };
 
@@ -321,11 +330,22 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
         </div>
 
         <form onSubmit={handleGenerate} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Production à tracer (optionnel)</label>
+            <select value={form.productionRecordId} onChange={(e) => {
+              const record = productionRecords.find((item) => item.id === e.target.value);
+              setForm({ ...form, productionRecordId: e.target.value, potTypeId: record?.pot_type_id ?? form.potTypeId, baker1Id: record?.baker_id ?? form.baker1Id, quantity: record?.quantity ?? form.quantity });
+            }} className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none">
+              <option value="">— Code par pot (mode existant) —</option>
+              {productionRecords.map((record) => <option key={record.id} value={record.id}>{new Date(record.production_date).toLocaleDateString('fr-FR')} · {record.pot_type?.name ?? 'Pot'} · {record.baker?.full_name ?? 'Pétrisseur'} · {record.quantity} pots</option>)}
+            </select>
+            <p className="mt-1 text-xs text-gray-400">Un code de lot unique est créé pour une production sélectionnée.</p>
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Type de pot</label>
             <select
               value={form.potTypeId}
-              onChange={(e) => setForm({ ...form, potTypeId: e.target.value })}
+              onChange={(e) => setForm({ ...form, potTypeId: e.target.value, productionRecordId: '' })}
               required
               className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none"
             >
@@ -368,7 +388,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
               min={1}
               value={form.quantity}
               onChange={(e) => setForm({ ...form, quantity: parseInt(e.target.value) || 1 })}
-              required
+              required disabled={Boolean(form.productionRecordId)}
               className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none"
             />
           </div>
@@ -416,6 +436,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
                 <canvas ref={(el) => { canvasRefs.current[b.id] = el; }} className="w-full" />
                 <div className="text-xs text-gray-500 font-mono text-center break-all">{b.code}</div>
                 <div className="text-xs text-gray-400">{b.pot_type?.name ?? '—'}</div>
+                {b.production_record && <div className="text-xs text-emerald-700 text-center">Lot · {b.production_record.baker?.full_name ?? 'Pétrisseur'}</div>}
                 <button
                   onClick={() => deleteBarcode(b.id)}
                   className="text-red-400 hover:text-red-600 text-xs flex items-center gap-1"
