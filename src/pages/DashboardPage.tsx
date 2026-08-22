@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { supabase, formatFCFA, Driver, DeliveryBatch, PotType, Baker, Kneader, ProductionRecord, DoughDelivery } from '@/lib/supabase';
+import { supabase, formatFCFA, Driver, DeliveryBatch, PotType, Baker, Kneader, ProductionRecord, DoughDelivery, SalesPoint } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { includePendingDashboardOperations } from '@/lib/pendingDashboard';
@@ -19,17 +19,18 @@ interface RawData {
   bakers: Baker[];
   kneaders: Kneader[];
   batches: (DeliveryBatch & { driver?: Driver; pot_type?: PotType })[];
-  deposits: { id: string; quantity: number; amount_fcfa: number; batch_id: string; deposited_at: string }[];
-  returns: { id: string; quantity: number; batch_id: string; empty_pots: number; empty_lids: number; returned_at: string }[];
+  deposits: { id: string; quantity: number; amount_fcfa: number; batch_id: string; deposited_at: string; sales_point?: SalesPoint }[];
+  returns: { id: string; quantity: number; batch_id: string; empty_pots: number; empty_lids: number; returned_at: string; sales_point?: SalesPoint }[];
   batchPotTypes: { batch_id: string; empty_pots: number; empty_lids: number; quantity: number }[];
   returnPotTypes: { return_id: string; pot_type_id: string; quantity: number; empty_pots: number; empty_lids: number; madeleine_count: number }[];
   pots: PotType[];
   salesPoints: { id: string; quota_amount: number; quota_paid: number; quota_status: string }[];
-  receivables: { id: string; amount_fcfa: number; amount_paid: number; status: string; driver_id: string | null }[];
+  receivables: { id: string; amount_fcfa: number; amount_paid: number; status: string; driver_id: string | null; batch_id: string; sales_point?: SalesPoint }[];
   productionRecords: ProductionRecord[];
   doughDeliveries: DoughDelivery[];
   deliveryExpenses: { id: string; amount_fcfa: number; expense_type: string; batch_id: string; deposit_id: string | null }[];
-  stockMovements: { id: string; movement_type: string; quantity: number; pot_type_id: string | null; created_at: string }[];
+  stockMovements: { id: string; movement_type: string; quantity: number; pot_type_id: string | null; batch_id: string | null; created_at: string }[];
+  consignments: { id: string; batch_id: string | null; quantity_deposited: number; quantity_returned: number; sales_point?: SalesPoint }[];
 }
 
 function inRange(dateStr: string, start: string, end: string): boolean {
@@ -47,6 +48,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
   const [selectedBaker, setSelectedBaker] = useState<string>('all');
   const [selectedKneader, setSelectedKneader] = useState<string>('all');
   const [periodRange, setPeriodRange] = useState<PeriodRange | null>(null);
+  const [selectedBatchId, setSelectedBatchId] = useState<string>('');
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -67,7 +69,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
       const [
         driversRes, bakersRes, kneadersRes, batchesRes, depositsRes, returnsRes,
         potsRes, salesPointsRes, receivablesRes, batchPotTypesRes, returnPotTypesRes,
-        productionRes, doughRes, expensesRes, stockMovementsRes,
+        productionRes, doughRes, expensesRes, stockMovementsRes, consignmentsRes,
       ] = await Promise.all([
         supabase.from('drivers').select('*').order('full_name'),
         supabase.from('bakers').select('*').order('full_name'),
@@ -75,11 +77,11 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
         supabase.from('delivery_batches')
           .select('*, driver:drivers(*), pot_type:pot_types(*)')
           .order('created_at', { ascending: false }),
-        supabase.from('deposits').select('id, quantity, amount_fcfa, batch_id, deposited_at'),
-        supabase.from('returns').select('id, quantity, batch_id, empty_pots, empty_lids, returned_at'),
+        supabase.from('deposits').select('id, quantity, amount_fcfa, batch_id, deposited_at, sales_point:sales_points(*)'),
+        supabase.from('returns').select('id, quantity, batch_id, empty_pots, empty_lids, returned_at, sales_point:sales_points(*)'),
         supabase.from('pot_types').select('*').eq('is_active', true),
         supabase.from('sales_points').select('id, quota_amount, quota_paid, quota_status, driver_id, name, zone'),
-        supabase.from('receivables').select('id, amount_fcfa, amount_paid, status, driver_id'),
+        supabase.from('receivables').select('id, amount_fcfa, amount_paid, status, driver_id, batch_id, sales_point:sales_points(*)'),
         supabase.from('batch_pot_types').select('batch_id, empty_pots, empty_lids, quantity'),
         supabase.from('return_pot_types').select('return_id, pot_type_id, quantity, empty_pots, empty_lids, madeleine_count'),
         supabase.from('production_records')
@@ -91,7 +93,8 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
           .order('delivery_date', { ascending: false })
           .limit(500),
         supabase.from('delivery_expenses').select('id, amount_fcfa, expense_type, batch_id, deposit_id'),
-        supabase.from('stock_movements').select('id, movement_type, quantity, pot_type_id, created_at').order('created_at', { ascending: false }).limit(200),
+        supabase.from('stock_movements').select('id, movement_type, quantity, pot_type_id, batch_id, created_at').order('created_at', { ascending: false }).limit(200),
+        supabase.from('consignments').select('id, batch_id, quantity_deposited, quantity_returned, sales_point:sales_points(*)'),
       ]);
 
       let receivables = receivablesRes.data ?? [];
@@ -125,6 +128,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
         doughDeliveries: doughRes.data ?? [],
         deliveryExpenses: expensesRes.data ?? [],
         stockMovements: stockMovementsRes.data ?? [],
+        consignments: consignmentsRes.data ?? [],
       };
     });
     if (!result.data && profile?.role === 1) {
@@ -343,6 +347,26 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
     };
   }, [raw, entityFilter, selectedDriver, selectedBaker, selectedKneader, period]);
 
+  const lotCircuit = useMemo(() => {
+    if (!raw || !selectedBatchId) return null;
+    const batch = raw.batches.find((candidate) => candidate.id === selectedBatchId);
+    if (!batch) return null;
+    const deposits = raw.deposits.filter((deposit) => deposit.batch_id === batch.id);
+    const returns = raw.returns.filter((ret) => ret.batch_id === batch.id);
+    const receivables = raw.receivables.filter((receivable) => receivable.batch_id === batch.id);
+    const consignments = (raw.consignments ?? []).filter((consignment) => consignment.batch_id === batch.id);
+    const stockReturns = raw.stockMovements.filter((movement) => movement.batch_id === batch.id && movement.movement_type === 'retour');
+    const deposited = deposits.reduce((sum, deposit) => sum + deposit.quantity, 0);
+    const returned = returns.reduce((sum, ret) => sum + ret.quantity, 0);
+    const revenue = deposits.reduce((sum, deposit) => sum + (deposit.amount_fcfa ?? 0), 0);
+    const receivableTotal = receivables.reduce((sum, receivable) => sum + receivable.amount_fcfa, 0);
+    const receivablePaid = receivables.reduce((sum, receivable) => sum + receivable.amount_paid, 0);
+    const consigned = consignments.reduce((sum, consignment) => sum + consignment.quantity_deposited, 0);
+    const stillInCirculation = consignments.reduce((sum, consignment) => sum + Math.max(0, consignment.quantity_deposited - consignment.quantity_returned), 0);
+    const returnedToStock = stockReturns.reduce((sum, movement) => sum + movement.quantity, 0);
+    return { batch, deposits, returns, deposited, returned, revenue, receivableTotal, receivablePaid, consigned, stillInCirculation, returnedToStock, stockReturns };
+  }, [raw, selectedBatchId]);
+
   if (loading || !stats) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-2">
@@ -472,6 +496,63 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
 
       {/* Period filter */}
       <PeriodFilter onRangeChange={setPeriodRange} defaultPreset="today" />
+
+      {/* Batch traceability */}
+      {stats.showDriverStats && raw && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+              <Route className="w-5 h-5 text-blue-700" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Circuit d’un lot</h3>
+              <p className="text-xs text-gray-500">Retrouvez l’itinéraire opérationnel et financier d’une tournée.</p>
+            </div>
+          </div>
+          <select value={selectedBatchId} onChange={(event) => setSelectedBatchId(event.target.value)}
+            className="w-full sm:max-w-xl px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200">
+            <option value="">— Sélectionner un lot récent —</option>
+            {raw.batches.slice(0, 50).map((batch) => (
+              <option key={batch.id} value={batch.id}>
+                {batch.batch_code} · {new Date(batch.batch_date).toLocaleDateString('fr-FR')} · {batch.driver?.full_name ?? 'Commercial non renseigné'}
+              </option>
+            ))}
+          </select>
+
+          {lotCircuit && (
+            <div className="border-t border-gray-100 pt-4 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-semibold text-gray-900">{lotCircuit.batch.batch_code}</p>
+                  <p className="text-xs text-gray-500">{lotCircuit.batch.driver?.full_name ?? 'Commercial non renseigné'} · {lotCircuit.batch.pot_type?.name ?? 'Type de pot non renseigné'} · {new Date(lotCircuit.batch.batch_date).toLocaleDateString('fr-FR')}</p>
+                </div>
+                <button onClick={() => onNavigate?.('batches')} className="text-sm font-medium text-blue-700 hover:text-blue-800">Voir la tournée</button>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+                {[
+                  { label: 'Attribués', value: lotCircuit.batch.quantity ?? 0, color: 'text-blue-700 bg-blue-50' },
+                  { label: 'Déposés', value: lotCircuit.deposited, color: 'text-teal-700 bg-teal-50' },
+                  { label: 'Consignés', value: lotCircuit.consigned, color: 'text-amber-700 bg-amber-50' },
+                  { label: 'En circulation', value: lotCircuit.stillInCirculation, color: 'text-orange-700 bg-orange-50' },
+                  { label: 'Retours', value: lotCircuit.returned, color: 'text-rose-700 bg-rose-50' },
+                  { label: 'Remis au stock', value: lotCircuit.returnedToStock, color: 'text-emerald-700 bg-emerald-50' },
+                ].map((step) => <div key={step.label} className={`rounded-xl p-3 ${step.color}`}><p className="text-lg font-bold">{step.value}</p><p className="text-[11px] font-medium">{step.label}</p></div>)}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                <div className="rounded-xl bg-gray-50 p-3">
+                  <p className="font-medium text-gray-800">Circuit financier</p>
+                  <p className="text-gray-600 mt-1">Encaissements : <span className="font-semibold text-emerald-700">{formatFCFA(lotCircuit.revenue)}</span></p>
+                  <p className="text-gray-600">Créances : <span className="font-semibold text-amber-700">{formatFCFA(lotCircuit.receivableTotal - lotCircuit.receivablePaid)}</span></p>
+                </div>
+                <div className="rounded-xl bg-gray-50 p-3">
+                  <p className="font-medium text-gray-800">Points de vente desservis</p>
+                  <p className="text-gray-600 mt-1">{lotCircuit.deposits.length === 0 ? 'Aucun dépôt enregistré.' : [...new Set(lotCircuit.deposits.map((deposit) => deposit.sales_point?.name ?? 'Point de vente non renseigné'))].join(' · ')}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Attendance cross-link */}
       {onNavigate && (
