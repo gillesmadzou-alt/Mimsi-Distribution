@@ -253,29 +253,29 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
+    <div className="min-w-0 space-y-4 overflow-x-hidden">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <button onClick={loadHistory}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 transition-all">
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 font-medium text-gray-700 transition-all hover:bg-gray-50 sm:w-auto">
           <History className="w-5 h-5" />
           Historique
         </button>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <button onClick={() => onNavigate?.('production')}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-50 text-blue-700 font-medium hover:bg-blue-100 transition-all">
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-50 px-4 py-2.5 font-medium text-blue-700 transition-all hover:bg-blue-100 sm:w-auto">
             <ArrowRight className="w-5 h-5" />
             Voir production
           </button>
           {canRecordStock && (
             <button onClick={() => openMovement()}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 transition-all">
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 font-medium text-gray-700 transition-all hover:bg-gray-50 sm:w-auto">
               <TrendingUp className="w-5 h-5" />
               Mouvement
             </button>
           )}
           {canManageOptions && (
             <button onClick={openCreate}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-md hover:shadow-lg transition-all">
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2.5 font-medium text-white shadow-md transition-all hover:shadow-lg sm:w-auto">
               <Plus className="w-5 h-5" />
               Nouveau type
             </button>
