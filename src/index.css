@@ -44,6 +44,25 @@ select:not([multiple]):disabled {
   box-shadow: 0 5px 16px rgb(180 83 9 / 0.08);
 }
 
+/* Most data-entry dialogs share the same desktop modal structure.  On a
+   phone, a bottom-sheet layout uses the available visual viewport (including
+   the reduced viewport while the keyboard is open) and keeps every field
+   reachable by scrolling inside the panel. */
+@media (max-width: 639px) {
+  .fixed.inset-0:has(> .bg-white.rounded-2xl) {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+
+  .fixed.inset-0:has(> .bg-white.rounded-2xl) > .bg-white.rounded-2xl {
+    width: 100% !important;
+    max-width: none !important;
+    max-height: 100dvh !important;
+    border-radius: 1.5rem 1.5rem 0 0 !important;
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom)) !important;
+  }
+}
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
