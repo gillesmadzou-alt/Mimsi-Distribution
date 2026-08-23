@@ -869,15 +869,6 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
     );
   }
 
-  if (isOffline && batches.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-        <CloudOff className="w-12 h-12 mb-3 text-gray-300" />
-        <p className="text-sm">Aucune donnée hors ligne. Connectez-vous à Internet au moins une fois pour charger les rapports.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -894,6 +885,18 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
           </div>
         </div>
       </div>
+
+      {isOffline && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
+          <CloudOff className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+          <div>
+            <p className="text-sm font-semibold">Rapports disponibles hors ligne</p>
+            <p className="text-xs text-amber-800">
+              Les rapports utilisent la dernière copie enregistrée sur cet appareil. Certaines rubriques peuvent être vides si elles n’ont pas encore été synchronisées.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Period selector */}
       <div className="bg-white rounded-2xl border border-gray-100 p-4">
