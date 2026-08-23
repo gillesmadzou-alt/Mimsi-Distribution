@@ -441,17 +441,22 @@ export default function ExpensesPage({ onNavigate }: { onNavigate?: (page: strin
         </div>
       </div>
 
+      {isOffline && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
+          <CloudOff className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+          <div>
+            <p className="text-sm font-semibold">Dépenses disponibles hors ligne</p>
+            <p className="text-xs text-amber-800">Les montants affichés proviennent de la dernière synchronisation sur cet appareil.</p>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         loadError ? (
           <div className="text-center py-20 text-red-500 text-sm bg-red-50 rounded-lg px-4 py-3 mx-auto max-w-md">{loadError}</div>
         ) : (
           <div className="text-center py-20 text-gray-400">Chargement…</div>
         )
-      ) : isOffline && expenses.length === 0 ? (
-        <div className="text-center py-20 text-gray-400 flex flex-col items-center gap-2">
-          <CloudOff className="w-12 h-12 text-gray-300" />
-          <p>Aucune donnée hors ligne. Connectez-vous à Internet au moins une fois pour charger les dépenses.</p>
-        </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
           {hasActiveFilters ? 'Aucune dépense ne correspond aux filtres' : 'Aucune dépense enregistrée'}
