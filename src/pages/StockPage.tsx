@@ -436,7 +436,7 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
 
       {/* Movement modal */}
       {showMovement && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setShowMovement(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 backdrop-blur-sm sm:p-4" onClick={() => setShowMovement(false)}>
           <div className="stock-movement-panel w-full max-w-md max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain rounded-2xl bg-white p-4 sm:p-6 animate-[scaleIn_180ms_ease-out]" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-4 flex items-center justify-between border-b border-gray-100 bg-white px-4 pb-3 pt-4 sm:static sm:m-0 sm:mb-4 sm:border-0 sm:p-0">
               <h3 className="text-lg font-bold text-gray-900">Mouvement de stock</h3>
