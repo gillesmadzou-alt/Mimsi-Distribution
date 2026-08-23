@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase, ROLE_LABELS, UserRole } from '@/lib/supabase';
-import { Truck, Camera, RefreshCw, Check, LogOut, User, Loader2, SwitchCamera, LogIn, LogOut as LogOutIcon, Shield, Mail, Lock, Eye, EyeOff, Clock } from 'lucide-react';
+import { supabase, UserRole } from '@/lib/supabase';
+import { Truck, Camera, RefreshCw, Check, LogOut, User, Loader2, SwitchCamera, LogIn, LogOut as LogOutIcon, Shield, Mail, Lock, Eye, EyeOff, Clock, ChevronDown } from 'lucide-react';
 
 type Step = 'mode' | 'form' | 'photo' | 'success' | 'manual-arrival';
 type CheckType = 'arrival' | 'departure';
@@ -11,6 +11,26 @@ interface KioskPerson {
   full_name: string;
   role: UserRole;
   type: 'profile' | 'driver' | 'baker' | 'kneader';
+}
+
+const kioskPersonPriority: Record<KioskPerson['type'], number> = {
+  profile: 1,
+  driver: 2,
+  baker: 3,
+  kneader: 4,
+};
+
+const normalisePersonName = (name: string) => name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('fr-FR');
+
+function uniqueKioskPeople(items: KioskPerson[]): KioskPerson[] {
+  const unique = new Map<string, KioskPerson>();
+  [...items]
+    .sort((a, b) => kioskPersonPriority[a.type] - kioskPersonPriority[b.type])
+    .forEach((person) => {
+      const key = normalisePersonName(person.full_name);
+      if (key && !unique.has(key)) unique.set(key, person);
+    });
+  return [...unique.values()].sort((a, b) => a.full_name.localeCompare(b.full_name, 'fr'));
 }
 
 export default function KioskCheckIn() {
@@ -56,8 +76,7 @@ export default function KioskCheckIn() {
       const all: KioskPerson[] = (data ?? []).map((person: { id: string; full_name: string; role: UserRole; person_type: KioskPerson['type'] }) => ({
         id: person.id, full_name: person.full_name, role: person.role, type: person.person_type,
       }));
-      all.sort((a, b) => a.full_name.localeCompare(b.full_name));
-      setPeople(all);
+      setPeople(uniqueKioskPeople(all));
     } catch {
       setPeople([]);
       setError('Impossible de charger la liste du personnel. Vérifiez la connexion.');
@@ -259,7 +278,6 @@ export default function KioskCheckIn() {
     setStep('mode');
     setCheckType('arrival');
     setSelectedPersonId('');
-    setPersonSearch('');
     setPhotoDataUrl(null);
     setError(null);
     setManualEmail('');
@@ -361,21 +379,25 @@ export default function KioskCheckIn() {
                       <Loader2 className="w-5 h-5 animate-spin" />
                     </div>
                   ) : (
-                    <select
-                      value={selectedPersonId}
-                      onChange={(e) => setSelectedPersonId(e.target.value)}
-                      disabled={people.length === 0}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none transition-all text-sm disabled:bg-gray-50 disabled:text-gray-400"
-                    >
-                      <option value="">
-                        {people.length === 0 ? 'Aucune personne disponible' : 'Choisissez vos nom et prénom'}
-                      </option>
-                      {people.map((p) => (
-                        <option key={`${p.type}-${p.id}`} value={p.id}>
-                          {p.full_name} — {ROLE_LABELS[p.role]}
+                    <div className="relative">
+                      <User className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-amber-600" />
+                      <select
+                        value={selectedPersonId}
+                        onChange={(e) => setSelectedPersonId(e.target.value)}
+                        disabled={people.length === 0}
+                        className="kiosk-person-select w-full py-3 pl-11 pr-11 text-sm font-medium text-gray-800 disabled:bg-gray-50 disabled:text-gray-400"
+                      >
+                        <option value="">
+                          {people.length === 0 ? 'Aucune personne disponible' : 'Choisissez vos nom et prénom'}
                         </option>
-                      ))}
-                    </select>
+                        {people.map((p) => (
+                          <option key={`${p.type}-${p.id}`} value={p.id}>
+                            {p.full_name}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-amber-600" />
+                    </div>
                   )}
                 </div>
                 {error && (
