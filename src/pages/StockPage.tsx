@@ -436,9 +436,9 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
 
       {/* Movement modal */}
       {showMovement && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 backdrop-blur-sm sm:p-4" onClick={() => setShowMovement(false)}>
-          <div className="stock-movement-panel w-full max-w-md max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain rounded-2xl bg-white p-4 sm:p-6 animate-[scaleIn_180ms_ease-out]" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-4 flex items-center justify-between border-b border-gray-100 bg-white px-4 pb-3 pt-4 sm:static sm:m-0 sm:mb-4 sm:border-0 sm:p-0">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowMovement(false)}>
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full animate-[scaleIn_180ms_ease-out]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-gray-900">Mouvement de stock</h3>
               <button onClick={() => setShowMovement(false)} className="p-1 rounded-lg text-gray-400 hover:bg-gray-100">
                 <X className="w-5 h-5" />
@@ -531,11 +531,9 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
                 <input value={movement.notes} onChange={(e) => setMovement({ ...movement, notes: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none" />
               </div>
-              <div className="sticky bottom-0 -mx-4 border-t border-gray-100 bg-white px-4 pb-4 pt-3 sm:static sm:mx-0 sm:border-0 sm:p-0">
-                <button type="submit" className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-md hover:shadow-lg transition-all">
-                  Valider le mouvement
-                </button>
-              </div>
+              <button type="submit" className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-md hover:shadow-lg transition-all">
+                Valider le mouvement
+              </button>
             </form>
           </div>
         </div>
