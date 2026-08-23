@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { cachePageData, getCachedPageData, getAllCachedData } from '@/lib/readCache';
 
 const PRECACHE_KEY = 'mimsi_precache_done';
-const PRECACHE_VERSION = 'v28';
+const PRECACHE_VERSION = 'v29';
 
 interface PrecacheProgress {
   done: number;
@@ -273,14 +273,19 @@ export async function precacheAllData(onProgress?: ProgressCallback, userProfile
     {
       key: 'expenses_page',
       fn: async () => {
-        const [expenses, salesPoints] = await Promise.all([
+        const [expenses, salesPoints, drivers, batches] = await Promise.all([
           supabase.from('delivery_expenses')
             .select('*, sales_point:sales_points(*), driver:drivers(*), batch:delivery_batches(batch_code)')
             .order('expense_date', { ascending: false })
             .order('created_at', { ascending: false }),
           supabase.from('sales_points').select('*').eq('is_active', true).order('name'),
+          supabase.from('drivers').select('*').eq('status', 'actif').order('full_name'),
+          supabase.from('delivery_batches').select('id, batch_code, batch_date').order('batch_date', { ascending: false }),
         ]);
-        return { expenses: expenses.data ?? [], salesPoints: salesPoints.data ?? [] };
+        return {
+          expenses: expenses.data ?? [], salesPoints: salesPoints.data ?? [],
+          drivers: drivers.data ?? [], batches: batches.data ?? [],
+        };
       },
     },
     {
