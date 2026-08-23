@@ -49,12 +49,12 @@ select:not([multiple]):disabled {
    the reduced viewport while the keyboard is open) and keeps every field
    reachable by scrolling inside the panel. */
 @media (max-width: 639px) {
-  .fixed.inset-0:has(> .bg-white.rounded-2xl) {
+  .fixed.inset-0:has(> .bg-white.rounded-2xl:not(.stock-movement-panel)) {
     align-items: flex-end !important;
     padding: 0 !important;
   }
 
-  .fixed.inset-0:has(> .bg-white.rounded-2xl) > .bg-white.rounded-2xl {
+  .fixed.inset-0:has(> .bg-white.rounded-2xl:not(.stock-movement-panel)) > .bg-white.rounded-2xl:not(.stock-movement-panel) {
     width: 100% !important;
     max-width: none !important;
     max-height: 100dvh !important;
