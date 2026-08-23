@@ -455,11 +455,11 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Type de stock</label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {(Object.keys(STOCK_KIND_LABELS) as StockKind[]).map((kind) => (
                     <button key={kind} type="button"
                       onClick={() => setMovement({ ...movement, stock_kind: kind })}
-                      className={`px-3 py-2 rounded-xl text-sm font-medium transition-all ${
+                      className={`w-full min-w-0 px-3 py-2 rounded-xl text-sm font-medium whitespace-normal break-words transition-all ${
                         movement.stock_kind === kind
                           ? 'bg-amber-500 text-white shadow-sm'
                           : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
