@@ -11,7 +11,7 @@ createRoot(document.getElementById('root')!).render(
 
 // Change this value for every production PWA release. It gives browsers a
 // new service-worker URL, even when they retained an older script in cache.
-const SW_VERSION = 'v56';
+const SW_VERSION = 'v60';
 
 if ('serviceWorker' in navigator) {
   let refreshing = false;
@@ -46,12 +46,20 @@ if ('serviceWorker' in navigator) {
     document.head.appendChild(styleEl);
 
     document.getElementById('sw-update-btn')?.addEventListener('click', () => {
+      const button = document.getElementById('sw-update-btn') as HTMLButtonElement | null;
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Installation de la mise à jour…';
+      }
       overlay.remove();
       navigator.serviceWorker.getRegistration().then((reg) => {
         if (reg && reg.waiting) {
           reg.waiting.postMessage({ type: 'SKIP_WAITING' });
         } else {
-          window.location.reload();
+          // Le contrôleur a pu être activé entre l'affichage de la boîte et
+          // le clic : une vérification puis un rechargement évitent de rester
+          // sur l'ancienne page.
+          reg?.update().finally(() => window.location.reload());
         }
       });
     });
@@ -74,6 +82,7 @@ if ('serviceWorker' in navigator) {
         }
       });
 
+      // Ne pas utiliser le cache HTTP pour la recherche d'une nouvelle version.
       reg.update();
     }).catch(() => {
       navigator.serviceWorker.register('/sw.js');

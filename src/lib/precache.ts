@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { cachePageData, getCachedPageData, getAllCachedData } from '@/lib/readCache';
 
 const PRECACHE_KEY = 'mimsi_precache_done';
-const PRECACHE_VERSION = 'v40';
+const PRECACHE_VERSION = 'v42';
 
 interface PrecacheProgress {
   done: number;
