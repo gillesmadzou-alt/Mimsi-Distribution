@@ -87,7 +87,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'Ressources',
     items: [
       { id: 'drivers', label: 'Commerciaux', description: 'Fiches des commerciaux, véhicules et zones', icon: Users, minRole: 4 },
-      { id: 'sales-points', label: 'Points de vente', description: 'Commerces desservis, quotas et coordonnées', icon: MapPin, minRole: 1, allowedRoles: [1, 2, 3, 4, 5, 6] },
+      { id: 'sales-points', label: 'Points de vente', description: 'Commerces desservis, quotas et coordonnées', icon: MapPin, minRole: 1, allowedRoles: [1, 2, 3, 4, 5, 6, 16] },
       { id: 'stock', label: 'Stock', description: 'Inventaire des pots, madeleines et contenants', icon: Package, minRole: 2 },
       { id: 'production', label: 'Pétrisseurs & Production', description: 'Production quotidienne de madeleines par pétrisseur', icon: ChefHat, minRole: 2 },
       { id: 'scheduling', label: 'Programmation', description: 'Planning des tournées et des équipes', icon: CalendarDays, minRole: 2 },

@@ -11,7 +11,7 @@ createRoot(document.getElementById('root')!).render(
 
 // Change this value for every production PWA release. It gives browsers a
 // new service-worker URL, even when they retained an older script in cache.
-const SW_VERSION = 'v52';
+const SW_VERSION = 'v53';
 
 if ('serviceWorker' in navigator) {
   let refreshing = false;
