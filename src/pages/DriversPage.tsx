@@ -41,7 +41,7 @@ export default function DriversPage({ onNavigate }: { onNavigate?: (page: string
 
   // Roles: chefs de départements (>=4) can submit requests; directrice (5) & adjoint (4) approve
   const canRequest = (profile?.role ?? 1) >= 4;
-  // Directrice (5) and Directeur adjoint (4) can approve — but they also can submit
+  // Directrice (5) and Directeur général adjoint (4) can approve — but they also can submit
   const isDirectrice = (profile?.role ?? 1) === 5;
   const isAdjoint = (profile?.role ?? 1) === 4;
   const isAdmin = (profile?.role ?? 1) === 6;
@@ -128,7 +128,7 @@ export default function DriversPage({ onNavigate }: { onNavigate?: (page: string
   };
 
   const handleDelete = async (driver: Driver) => {
-    if (!(await confirmDialog({ message: `Demande de suppression du commercial ${driver.full_name} ? Cette demande devra être approuvée par la Directrice et le Directeur adjoint.`, confirmLabel: 'Demander la suppression', danger: true }))) return;
+    if (!(await confirmDialog({ message: `Demande de suppression du commercial ${driver.full_name} ? Cette demande devra être approuvée par la Directrice et le Directeur général adjoint.`, confirmLabel: 'Demander la suppression', danger: true }))) return;
     const userId = (await supabase.auth.getUser()).data.user?.id;
     await supabase.from('personnel_change_requests').insert({
       entity_type: 'driver',

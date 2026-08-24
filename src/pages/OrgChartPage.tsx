@@ -71,7 +71,7 @@ const ROLE_META: Record<number, { title: string; icon: typeof Crown; color: stri
   1: { title: 'Commercial', icon: Truck, color: 'text-blue-700', bgColor: 'bg-blue-50', borderColor: 'border-blue-200' },
   2: { title: 'Gestionnaire de stock', icon: Package, color: 'text-cyan-700', bgColor: 'bg-cyan-50', borderColor: 'border-cyan-200' },
   3: { title: 'Comptable', icon: Calculator, color: 'text-emerald-700', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200' },
-  4: { title: 'Directeur Général Adjoint', icon: Briefcase, color: 'text-orange-700', bgColor: 'bg-orange-50', borderColor: 'border-orange-200' },
+  4: { title: 'Directeur général adjoint', icon: Briefcase, color: 'text-orange-700', bgColor: 'bg-orange-50', borderColor: 'border-orange-200' },
   5: { title: 'Directrice Générale', icon: Crown, color: 'text-amber-700', bgColor: 'bg-amber-50', borderColor: 'border-amber-200' },
   6: { title: 'Administrateur', icon: ShieldCheck, color: 'text-rose-700', bgColor: 'bg-rose-50', borderColor: 'border-rose-200' },
   7: { title: 'Directrice Commerciale', icon: Users, color: 'text-blue-700', bgColor: 'bg-blue-50', borderColor: 'border-blue-200' },
@@ -371,7 +371,7 @@ function AdminOrgTree({ holders, onNavigate }: { holders: (role: number) => OrgP
       {/* Connector */}
       <div className="w-px h-8 bg-gray-200" />
 
-      {/* Level 2 — Directeur Général Adjoint */}
+      {/* Level 2 — Directeur général adjoint */}
       <div className="flex flex-col items-center">
         <RoleCard role={4} holders={adjoint} large onNavigate={onNavigate} />
       </div>

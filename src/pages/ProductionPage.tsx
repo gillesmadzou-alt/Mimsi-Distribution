@@ -484,7 +484,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
   };
 
   const deleteBaker = async (baker: Baker) => {
-    if (!(await confirmDialog({ message: `Demande de suppression du pétrisseur ${baker.full_name} ? Cette demande devra être approuvée par la Directrice et le Directeur adjoint.`, confirmLabel: 'Demander la suppression', danger: true }))) return;
+    if (!(await confirmDialog({ message: `Demande de suppression du pétrisseur ${baker.full_name} ? Cette demande devra être approuvée par la Directrice et le Directeur général adjoint.`, confirmLabel: 'Demander la suppression', danger: true }))) return;
     const userId = (await supabase.auth.getUser()).data.user?.id;
     await supabase.from('personnel_change_requests').insert({
       entity_type: 'baker',
@@ -497,7 +497,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
   };
 
   const deleteKneader = async (kneader: Kneader) => {
-    if (!(await confirmDialog({ message: `Demande de suppression du fournier ${kneader.full_name} ? Cette demande devra être approuvée par la Directrice et le Directeur adjoint.`, confirmLabel: 'Demander la suppression', danger: true }))) return;
+    if (!(await confirmDialog({ message: `Demande de suppression du fournier ${kneader.full_name} ? Cette demande devra être approuvée par la Directrice et le Directeur général adjoint.`, confirmLabel: 'Demander la suppression', danger: true }))) return;
     const userId = (await supabase.auth.getUser()).data.user?.id;
     await supabase.from('personnel_change_requests').insert({
       entity_type: 'kneader',
