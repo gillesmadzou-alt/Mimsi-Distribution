@@ -4,15 +4,26 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 type CheckType = "arrival" | "departure";
 type PersonType = "profile" | "driver" | "baker" | "kneader";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": Deno.env.get("APP_ORIGIN") ?? "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+const allowedOrigins = new Set([
+  "https://mimsi-distribution-ennx.vercel.app",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+]);
 
-const json = (body: Record<string, unknown>, status = 200) => new Response(JSON.stringify(body), {
+function corsHeaders(req: Request) {
+  const origin = req.headers.get("origin");
+  return {
+    "Access-Control-Allow-Origin": origin && allowedOrigins.has(origin)
+      ? origin
+      : "https://mimsi-distribution-ennx.vercel.app",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
+}
+
+const json = (req: Request, body: Record<string, unknown>, status = 200) => new Response(JSON.stringify(body), {
   status,
-  headers: { ...corsHeaders, "Content-Type": "application/json" },
+  headers: { ...corsHeaders(req), "Content-Type": "application/json" },
 });
 
 function dateAndTimeInBusinessTimezone(recordedAt: Date): { date: string; time: string } {
@@ -41,8 +52,8 @@ function decodePhoto(value: unknown): Uint8Array | null {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-  if (req.method !== "POST") return json({ error: "Méthode non autorisée" }, 405);
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders(req) });
+  if (req.method !== "POST") return json(req, { error: "Méthode non autorisée" }, 405);
 
   try {
     const body = await req.json();
@@ -53,7 +64,7 @@ Deno.serve(async (req) => {
     const recordedAt = typeof body.recordedAt === "string" ? new Date(body.recordedAt) : new Date();
     if (!(["arrival", "departure"] as string[]).includes(action) || typeof personId !== "string" ||
       !(["profile", "driver", "baker", "kneader"] as string[]).includes(personType) || !photo || Number.isNaN(recordedAt.getTime())) {
-      return json({ error: "Données de pointage invalides." }, 400);
+      return json(req, { error: "Données de pointage invalides." }, 400);
     }
 
     const admin = createClient(
@@ -66,13 +77,13 @@ Deno.serve(async (req) => {
       .eq("id", personId)
       .eq("person_type", personType)
       .maybeSingle();
-    if (!person) return json({ error: "Personne inactive ou introuvable." }, 404);
+    if (!person) return json(req, { error: "Personne inactive ou introuvable." }, 404);
 
     const { date, time } = dateAndTimeInBusinessTimezone(recordedAt);
     const filePath = `attendance/${date}/${personType}/${personId}/${action}-${crypto.randomUUID()}.jpg`;
     const { error: uploadError } = await admin.storage.from("attendance-photos")
       .upload(filePath, photo, { contentType: "image/jpeg", upsert: false });
-    if (uploadError) return json({ error: "Impossible d’enregistrer la photo." }, 500);
+    if (uploadError) return json(req, { error: "Impossible d’enregistrer la photo." }, 500);
 
     if (action === "arrival") {
       const { error } = await admin.from("attendance_records").insert({
@@ -89,8 +100,8 @@ Deno.serve(async (req) => {
         photo_url: filePath,
         departure_photo_url: null,
       });
-      if (error?.code === "23505") return json({ error: "Votre arrivée est déjà enregistrée aujourd’hui." }, 409);
-      if (error) return json({ error: "Impossible d’enregistrer l’arrivée." }, 500);
+      if (error?.code === "23505") return json(req, { error: "Votre arrivée est déjà enregistrée aujourd’hui." }, 409);
+      if (error) return json(req, { error: "Impossible d’enregistrer l’arrivée." }, 500);
     } else {
       const { data: openRecord } = await admin.from("attendance_records")
         .select("id")
@@ -99,15 +110,15 @@ Deno.serve(async (req) => {
         .eq("attendance_date", date)
         .is("departure_time", null)
         .maybeSingle();
-      if (!openRecord) return json({ error: "Aucune arrivée ouverte n’a été trouvée aujourd’hui." }, 409);
+      if (!openRecord) return json(req, { error: "Aucune arrivée ouverte n’a été trouvée aujourd’hui." }, 409);
       const { error } = await admin.from("attendance_records")
         .update({ departure_time: time, departure_photo_url: filePath })
         .eq("id", openRecord.id)
         .is("departure_time", null);
-      if (error) return json({ error: "Impossible d’enregistrer le départ." }, 500);
+      if (error) return json(req, { error: "Impossible d’enregistrer le départ." }, 500);
     }
-    return json({ success: true });
+    return json(req, { success: true });
   } catch {
-    return json({ error: "Erreur serveur." }, 500);
+    return json(req, { error: "Erreur serveur." }, 500);
   }
 });
