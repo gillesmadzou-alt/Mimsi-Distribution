@@ -168,7 +168,7 @@ export default function ApprovalsPage({ onNavigate }: { onNavigate?: (page: stri
       {!canApprove && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800 flex items-center gap-2">
           <AlertCircle className="w-5 h-5 shrink-0" />
-          Seuls l'administrateur, la Directrice et le Directeur général adjoint peuvent approuver ou rejeter les demandes.
+          Seuls l'administrateur, la Directrice générale et le Directeur général adjoint peuvent approuver ou rejeter les demandes.
         </div>
       )}
 
@@ -218,7 +218,7 @@ export default function ApprovalsPage({ onNavigate }: { onNavigate?: (page: stri
                     {renderPayload(req)}
                     <div className="flex items-center gap-4 mt-3 text-xs">
                       <div className={`flex items-center gap-1.5 ${directriceDone ? 'text-emerald-600' : 'text-gray-400'}`}>
-                        {directriceDone ? <CheckCircle2 className="w-4 h-4" /> : <Clock className="w-4 h-4" />} Directrice {directriceDone ? 'approuvé' : 'en attente'}
+                        {directriceDone ? <CheckCircle2 className="w-4 h-4" /> : <Clock className="w-4 h-4" />} Directrice générale {directriceDone ? 'approuvé' : 'en attente'}
                       </div>
                       <div className={`flex items-center gap-1.5 ${adjointDone ? 'text-emerald-600' : 'text-gray-400'}`}>
                         {adjointDone ? <CheckCircle2 className="w-4 h-4" /> : <Clock className="w-4 h-4" />} Dir. adjoint {adjointDone ? 'approuvé' : 'en attente'}
@@ -232,7 +232,7 @@ export default function ApprovalsPage({ onNavigate }: { onNavigate?: (page: stri
                       <div className="flex gap-2 mt-3">
                         {canActDirectrice && (
                           <button onClick={() => handleApprove(req)} className="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 transition-colors flex items-center gap-1">
-                            <CheckCircle2 className="w-4 h-4" /> Approuver (Directrice)
+                            <CheckCircle2 className="w-4 h-4" /> Approuver (Directrice générale)
                           </button>
                         )}
                         {canActAdjoint && (

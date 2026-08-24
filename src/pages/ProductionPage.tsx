@@ -484,7 +484,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
   };
 
   const deleteBaker = async (baker: Baker) => {
-    if (!(await confirmDialog({ message: `Demande de suppression du pétrisseur ${baker.full_name} ? Cette demande devra être approuvée par la Directrice et le Directeur général adjoint.`, confirmLabel: 'Demander la suppression', danger: true }))) return;
+    if (!(await confirmDialog({ message: `Demande de suppression du pétrisseur ${baker.full_name} ? Cette demande devra être approuvée par la Directrice générale et le Directeur général adjoint.`, confirmLabel: 'Demander la suppression', danger: true }))) return;
     const userId = (await supabase.auth.getUser()).data.user?.id;
     await supabase.from('personnel_change_requests').insert({
       entity_type: 'baker',
@@ -497,7 +497,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
   };
 
   const deleteKneader = async (kneader: Kneader) => {
-    if (!(await confirmDialog({ message: `Demande de suppression du fournier ${kneader.full_name} ? Cette demande devra être approuvée par la Directrice et le Directeur général adjoint.`, confirmLabel: 'Demander la suppression', danger: true }))) return;
+    if (!(await confirmDialog({ message: `Demande de suppression du fournier ${kneader.full_name} ? Cette demande devra être approuvée par la Directrice générale et le Directeur général adjoint.`, confirmLabel: 'Demander la suppression', danger: true }))) return;
     const userId = (await supabase.auth.getUser()).data.user?.id;
     await supabase.from('personnel_change_requests').insert({
       entity_type: 'kneader',
@@ -575,7 +575,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
                   <p className="text-sm font-medium text-gray-900">{ACTION_LABELS[req.action_type]} — {String(req.payload.full_name ?? '—')}</p>
                   <p className="text-xs text-gray-500">Par {req.requester?.full_name ?? '—'} · {new Date(req.created_at).toLocaleString('fr-FR')}</p>
                   <div className="flex items-center gap-3 mt-1 text-xs">
-                    <span className={req.directrice_approved_by ? 'text-emerald-600' : 'text-gray-400'}>{req.directrice_approved_by ? '✓ Directrice' : '○ Directrice'}</span>
+                    <span className={req.directrice_approved_by ? 'text-emerald-600' : 'text-gray-400'}>{req.directrice_approved_by ? '✓ Directrice générale' : '○ Directrice générale'}</span>
                     <span className={req.adjoint_approved_by ? 'text-emerald-600' : 'text-gray-400'}>{req.adjoint_approved_by ? '✓ Dir. adjoint' : '○ Dir. adjoint'}</span>
                   </div>
                 </div>
@@ -1082,7 +1082,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
               <p className="mt-1 text-xs text-gray-400">Permet au pétrisseur d'enregistrer sa production lui-même.</p>
             </FormField>
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-800">
-              Cette demande sera soumise pour approbation à la Directrice et au Directeur général adjoint.
+              Cette demande sera soumise pour approbation à la Directrice générale et au Directeur général adjoint.
             </div>
             <SubmitBtn label={editingBaker ? 'Soumettre la demande' : 'Soumettre la demande'} />
           </form>
@@ -1116,7 +1116,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
               <p className="mt-1 text-xs text-gray-400">Permet au fournier d'enregistrer ses livraisons de pâte lui-même.</p>
             </FormField>
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-800">
-              Cette demande sera soumise pour approbation à la Directrice et au Directeur général adjoint.
+              Cette demande sera soumise pour approbation à la Directrice générale et au Directeur général adjoint.
             </div>
             <SubmitBtn label={editingKneader ? 'Soumettre la demande' : 'Soumettre la demande'} />
           </form>
@@ -1343,7 +1343,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
                   </div>
                 );
               })()}
-              <p className="mt-1.5 text-xs text-gray-400">1 pâte = 7,5 kg = 471 madeleines. Tolérance ±5%. Un écart génère une alerte de conformité au DGA et à la Directrice.</p>
+              <p className="mt-1.5 text-xs text-gray-400">1 pâte = 7,5 kg = 471 madeleines. Tolérance ±5%. Un écart génère une alerte de conformité au DGA et à la Directrice générale.</p>
             </div>
 
             <FormField label="Notes">

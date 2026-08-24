@@ -12,7 +12,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   2: 'Gestionnaire de stock',
   3: 'Comptable',
   4: 'Directeur général adjoint',
-  5: 'Directrice',
+  5: 'Directrice générale',
   6: 'Administrateur',
   7: 'Directrice commerciale',
   8: 'Responsable de production',

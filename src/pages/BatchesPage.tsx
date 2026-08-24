@@ -850,7 +850,7 @@ export default function BatchesPage() {
       payment_type: directForm.payment_type,
       amount_fcfa: amount,
       is_confirmed: true,
-      notes: `Livraison opportune — ${directForm.notes || 'Directrice/Direction'}`,
+      notes: `Livraison opportune — ${directForm.notes || 'Direction générale'}`,
     }).select().single();
 
     if (!depErr && deposit) {

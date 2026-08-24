@@ -41,7 +41,7 @@ export default function DriversPage({ onNavigate }: { onNavigate?: (page: string
 
   // Roles: chefs de départements (>=4) can submit requests; directrice (5) & adjoint (4) approve
   const canRequest = (profile?.role ?? 1) >= 4;
-  // Directrice (5) and Directeur général adjoint (4) can approve — but they also can submit
+  // Directrice générale (5) and Directeur général adjoint (4) can approve — but they also can submit
   const isDirectrice = (profile?.role ?? 1) === 5;
   const isAdjoint = (profile?.role ?? 1) === 4;
   const isAdmin = (profile?.role ?? 1) === 6;
@@ -128,7 +128,7 @@ export default function DriversPage({ onNavigate }: { onNavigate?: (page: string
   };
 
   const handleDelete = async (driver: Driver) => {
-    if (!(await confirmDialog({ message: `Demande de suppression du commercial ${driver.full_name} ? Cette demande devra être approuvée par la Directrice et le Directeur général adjoint.`, confirmLabel: 'Demander la suppression', danger: true }))) return;
+    if (!(await confirmDialog({ message: `Demande de suppression du commercial ${driver.full_name} ? Cette demande devra être approuvée par la Directrice générale et le Directeur général adjoint.`, confirmLabel: 'Demander la suppression', danger: true }))) return;
     const userId = (await supabase.auth.getUser()).data.user?.id;
     await supabase.from('personnel_change_requests').insert({
       entity_type: 'driver',
@@ -240,7 +240,7 @@ export default function DriversPage({ onNavigate }: { onNavigate?: (page: string
                     </p>
                     <div className="flex items-center gap-3 mt-1 text-xs">
                       <span className={req.directrice_approved_by ? 'text-emerald-600' : 'text-gray-400'}>
-                        {req.directrice_approved_by ? '✓ Directrice' : '○ Directrice'}
+                        {req.directrice_approved_by ? '✓ Directrice générale' : '○ Directrice générale'}
                       </span>
                       <span className={req.adjoint_approved_by ? 'text-emerald-600' : 'text-gray-400'}>
                         {req.adjoint_approved_by ? '✓ Dir. adjoint' : '○ Dir. adjoint'}
@@ -353,7 +353,7 @@ export default function DriversPage({ onNavigate }: { onNavigate?: (page: string
               </button>
             </div>
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3 text-xs text-amber-800">
-              Cette demande sera soumise pour approbation à la Directrice et au Directeur général adjoint avant d'être appliquée.
+              Cette demande sera soumise pour approbation à la Directrice générale et au Directeur général adjoint avant d'être appliquée.
             </div>
             <form onSubmit={handleSubmit} className="space-y-3">
               <div>
