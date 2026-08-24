@@ -26,6 +26,15 @@ interface Person {
   status?: string;
 }
 
+function deduplicatePeople(people: Person[]): Person[] {
+  const uniquePeople = new Map<string, Person>();
+  for (const person of people) {
+    const nameKey = person.full_name.trim().replace(/\s+/g, ' ').toLowerCase();
+    if (nameKey && !uniquePeople.has(nameKey)) uniquePeople.set(nameKey, person);
+  }
+  return [...uniquePeople.values()].sort((a, b) => a.full_name.localeCompare(b.full_name));
+}
+
 export default function AttendancePage({ onNavigate }: { onNavigate?: (page: string) => void }) {
   const { profile } = useAuth();
   const { toast } = useToast();
@@ -75,11 +84,9 @@ export default function AttendancePage({ onNavigate }: { onNavigate?: (page: str
       .filter((k) => k.status === 'actif')
       .map((k) => ({ id: k.id, full_name: k.full_name, role: 8 as UserRole, type: 'kneader' as const, status: k.status }));
 
-    const all = [...profilesList, ...driversList, ...bakersList, ...kneadersList];
-    all.sort((a, b) => a.full_name.localeCompare(b.full_name));
-    return all;
+    return deduplicatePeople([...profilesList, ...driversList, ...bakersList, ...kneadersList]);
     });
-    if (result.data) setPeople(Array.isArray(result.data) ? result.data : []);
+    if (result.data) setPeople(Array.isArray(result.data) ? deduplicatePeople(result.data as Person[]) : []);
     else if (result.error) setLoadError('Erreur lors du chargement du personnel.');
   }, [fetchWithCache]);
 

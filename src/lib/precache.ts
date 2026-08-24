@@ -168,7 +168,12 @@ export async function precacheAllData(onProgress?: ProgressCallback, userProfile
           ...(bakers.data ?? []).filter((person) => person.status === 'actif').map((person) => ({ id: person.id, full_name: person.full_name, role: 9, type: 'baker', status: person.status })),
           ...(kneaders.data ?? []).filter((person) => person.status === 'actif').map((person) => ({ id: person.id, full_name: person.full_name, role: 8, type: 'kneader', status: person.status })),
         ];
-        return people.sort((a, b) => a.full_name.localeCompare(b.full_name));
+        const uniquePeople = new Map<string, typeof people[number]>();
+        for (const person of people) {
+          const nameKey = person.full_name.trim().replace(/\s+/g, ' ').toLowerCase();
+          if (nameKey && !uniquePeople.has(nameKey)) uniquePeople.set(nameKey, person);
+        }
+        return [...uniquePeople.values()].sort((a, b) => a.full_name.localeCompare(b.full_name));
       },
     },
     {
