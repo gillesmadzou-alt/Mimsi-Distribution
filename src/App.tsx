@@ -6,7 +6,7 @@ import { ToastProvider } from '@/contexts/ToastContext';
 import { ConfirmProvider } from '@/contexts/ConfirmContext';
 import AuthPage from '@/pages/AuthPage';
 import AppShell, { PageId, NAV_SECTIONS } from '@/components/AppShell';
-import { UserRole, ROLE_LABELS, getRoleAccessLevel } from '@/lib/supabase';
+import { UserRole, getRoleAccessLevel } from '@/lib/supabase';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 import MandatoryLocationGate from '@/components/MandatoryLocationGate';
 import DashboardPage from '@/pages/DashboardPage';
@@ -126,9 +126,8 @@ function OfficeApp() {
           <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mb-4">
             <ShieldAlert className="w-8 h-8 text-amber-500" />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Accès non autorisé</h2>
-          <p className="text-sm text-gray-500 max-w-md mb-1">
-            Votre profil ({ROLE_LABELS[role]}) n'a pas accès à cette rubrique.
+          <p className="text-base font-medium text-gray-700 max-w-md mb-1">
+            {profile?.full_name ?? 'Utilisateur'}, vous n'avez pas accès à cette page merci.
           </p>
           <p className="text-sm text-gray-400 mb-6">Redirection automatique vers le tableau de bord…</p>
           <button
