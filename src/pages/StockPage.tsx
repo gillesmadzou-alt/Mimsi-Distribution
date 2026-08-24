@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { supabase, PotType, PotShape, POT_SHAPE_LABELS, formatFCFA, Driver, Baker, StockMovement, DeliveryBatch } from '@/lib/supabase';
+import { supabase, PotType, PotShape, POT_SHAPE_LABELS, formatFCFA, Driver, Baker, StockMovement, DeliveryBatch, getRoleAccessLevel } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { getCachedPageData, cachePageData } from '@/lib/readCache';
 import { useAuth } from '@/contexts/AuthContext';
@@ -53,7 +53,10 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
   const { fetchWithCache, isOffline } = useOfflineFetch();
 
   const role = profile?.role ?? 1;
-  const canRecordStock = [2, 4, 5, 6].includes(role);
+  // L'assistant de gestion de stock (16) a le même périmètre opérationnel
+  // que la gestionnaire (2), sans hériter des privilèges de direction.
+  const operationalRole = getRoleAccessLevel(role);
+  const canRecordStock = [2, 4, 5, 6].includes(operationalRole);
   const canManageOptions = [4, 5, 6].includes(role);
 
   const loadPots = useCallback(async () => {
@@ -270,7 +273,7 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
             <button onClick={() => openMovement()}
               className="flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 font-medium text-gray-700 transition-all hover:bg-gray-50 sm:w-auto">
               <TrendingUp className="w-5 h-5" />
-              Mouvement
+              Mouvement de stock
             </button>
           )}
           {canManageOptions && (
