@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import PhotoCaptureModal from '@/components/PhotoCaptureModal';
+import { getAttendancePhotoUrl } from '@/lib/attendancePhotos';
 
 const EXEMPT_ROLES: UserRole[] = [];
 
@@ -40,6 +41,7 @@ export default function AttendancePage({ onNavigate }: { onNavigate?: (page: str
   const [captureTarget, setCaptureTarget] = useState<{ personId: string; personName: string; type: 'arrival' | 'departure' } | null>(null);
   const [editingTime, setEditingTime] = useState<{ recordId: string; field: 'arrival_time' | 'departure_time'; value: string } | null>(null);
   const [photoModal, setPhotoModal] = useState<{ url: string; name: string; type: string } | null>(null);
+  const [signedPhotoUrls, setSignedPhotoUrls] = useState<Record<string, string>>({});
   const [newPerson, setNewPerson] = useState<{ personId: string; arrival: string; departure: string; status: AttendanceRecord['status']; notes: string }>({
     personId: '', arrival: '', departure: '', status: 'present', notes: '',
   });
@@ -107,6 +109,34 @@ export default function AttendancePage({ onNavigate }: { onNavigate?: (page: str
     loadPeople();
     loadRecords();
   });
+
+  useEffect(() => {
+    if (isOffline) {
+      setSignedPhotoUrls({});
+      return;
+    }
+
+    const paths = [...new Set(records.flatMap((record) => [record.photo_url, record.departure_photo_url]).filter((path): path is string => Boolean(path)))];
+    let cancelled = false;
+
+    const refreshUrls = async () => {
+      const entries = await Promise.all(paths.map(async (path) => [path, await getAttendancePhotoUrl(path)] as const));
+      if (!cancelled) {
+        const nextUrls: Record<string, string> = {};
+        for (const [path, url] of entries) {
+          if (url) nextUrls[path] = url;
+        }
+        setSignedPhotoUrls(nextUrls);
+      }
+    };
+
+    void refreshUrls();
+    const refreshInterval = window.setInterval(refreshUrls, 4 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(refreshInterval);
+    };
+  }, [records, isOffline]);
 
   const recordsByPerson = useMemo(() => {
     const map = new Map<string, AttendanceRecord>();
@@ -277,7 +307,15 @@ export default function AttendancePage({ onNavigate }: { onNavigate?: (page: str
   const todayStr = new Date().toISOString().slice(0, 10);
   const isToday = selectedDate === todayStr;
 
-  const photoUrl = (path: string) => `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/attendance-photos/${path}`;
+  const photoUrl = (path: string) => signedPhotoUrls[path];
+  const openPhoto = (path: string, name: string, type: string) => {
+    const url = photoUrl(path);
+    if (!url) {
+      toast(isOffline ? 'Les photos de présence nécessitent une connexion sécurisée.' : 'Chargement sécurisé de la photo en cours.', 'info');
+      return;
+    }
+    setPhotoModal({ url, name, type });
+  };
   const calcWorkedDuration = (arrival: string | null, departure: string | null) => {
     if (!arrival || !departure) return null;
     const [ah, am] = arrival.slice(0, 5).split(':').map(Number);
@@ -461,7 +499,7 @@ export default function AttendancePage({ onNavigate }: { onNavigate?: (page: str
                   </div>
                   <div className="grid grid-cols-2 divide-x divide-gray-50">
                     <button
-                      onClick={() => rec.photo_url && setPhotoModal({ url: photoUrl(rec.photo_url!), name: person.full_name, type: 'arrivée' })}
+                      onClick={() => rec.photo_url && openPhoto(rec.photo_url, person.full_name, 'arrivée')}
                       className="relative aspect-square bg-gray-50 hover:bg-gray-100 transition-colors group"
                       disabled={!rec.photo_url}
                     >
@@ -481,7 +519,7 @@ export default function AttendancePage({ onNavigate }: { onNavigate?: (page: str
                       )}
                     </button>
                     <button
-                      onClick={() => rec.departure_photo_url && setPhotoModal({ url: photoUrl(rec.departure_photo_url!), name: person.full_name, type: 'départ' })}
+                      onClick={() => rec.departure_photo_url && openPhoto(rec.departure_photo_url, person.full_name, 'départ')}
                       className="relative aspect-square bg-gray-50 hover:bg-gray-100 transition-colors group"
                       disabled={!rec.departure_photo_url}
                     >
@@ -517,7 +555,7 @@ export default function AttendancePage({ onNavigate }: { onNavigate?: (page: str
               {/* Avatar / status dot */}
               <div className="relative shrink-0">
                 {rec?.photo_url ? (
-                  <button onClick={() => setPhotoModal({ url: photoUrl(rec.photo_url!), name: person.full_name, type: 'arrivée' })} className="block">
+                  <button onClick={() => openPhoto(rec.photo_url!, person.full_name, 'arrivée')} className="block">
                     <img
                       src={photoUrl(rec.photo_url!)}
                       alt={person.full_name}
@@ -582,7 +620,7 @@ export default function AttendancePage({ onNavigate }: { onNavigate?: (page: str
                 )}
                 {rec?.departure_photo_url && (
                   <button
-                    onClick={() => setPhotoModal({ url: photoUrl(rec.departure_photo_url!), name: person.full_name, type: 'départ' })}
+                    onClick={() => openPhoto(rec.departure_photo_url!, person.full_name, 'départ')}
                     className="shrink-0"
                     title="Photo de départ"
                   >
