@@ -1009,7 +1009,7 @@ export default function BatchesPage() {
       )}
 
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="mobile-action-stack flex items-center gap-2 flex-wrap sm:w-auto sm:flex-row">
           {canDirectDeliver && (
             <button onClick={() => setShowDirectDelivery(true)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-medium shadow-md hover:shadow-lg transition-all">

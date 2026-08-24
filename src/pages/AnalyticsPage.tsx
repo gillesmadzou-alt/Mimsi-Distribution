@@ -730,7 +730,7 @@ export default function AnalyticsPage({ onNavigate }: { onNavigate?: (page: stri
           <BarChart2 className="w-5 h-5 text-blue-500" />
           Analytique & Graphiques
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="mobile-action-stack flex items-center gap-2 sm:w-auto sm:flex-row">
           {onNavigate && (
             <button
               onClick={() => onNavigate('statistics')}

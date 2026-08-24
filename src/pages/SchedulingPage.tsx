@@ -236,8 +236,8 @@ export default function SchedulingPage({ onNavigate }: { onNavigate?: (page: str
   return (
     <div className="space-y-4">
       {/* Header bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
           <button
             onClick={() => setWeekRef(addDays(weekRef, -7))}
             className="p-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
@@ -263,7 +263,7 @@ export default function SchedulingPage({ onNavigate }: { onNavigate?: (page: str
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="mobile-action-stack flex items-center gap-2 sm:w-auto sm:flex-row">
           <div className="relative">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
             <select

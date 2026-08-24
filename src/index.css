@@ -102,6 +102,23 @@ select:not([multiple]):disabled {
     min-width: 0;
   }
 
+  /* Explicit action toolbars are used for navigation and creation buttons.
+     They must be fully readable and touchable, never pushed off the right
+     side of a phone. */
+  main .mobile-action-stack {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  main .mobile-action-stack > * {
+    width: 100%;
+  }
+
+  main .mobile-action-stack button {
+    justify-content: center;
+  }
+
   /* Dense desktop metric and button grids become two-column grids on a
      phone; forms use one field per row for a comfortable touch target. */
   main .grid.grid-cols-3,

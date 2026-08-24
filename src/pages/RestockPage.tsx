@@ -92,7 +92,7 @@ export default function RestockPage({ onNavigate }: { onNavigate?: (page: string
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex gap-2 flex-wrap">
           <button onClick={() => setFilterStatus('')}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${!filterStatus ? 'bg-amber-500 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>

@@ -662,7 +662,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
           )}
         </div>
 
-        <div className="flex gap-2 items-center">
+        <div className="mobile-action-stack flex gap-2 items-center sm:w-auto sm:flex-row">
           {tab === 'records' && records.length > 0 && (
             <div className="relative">
               <button onClick={() => setShowExportMenu(!showExportMenu)}
@@ -729,7 +729,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
       </div>
 
       {/* Cross-links */}
-      <div className="flex gap-2">
+      <div className="mobile-action-stack flex gap-2 sm:w-auto sm:flex-row">
         <button onClick={() => onNavigate?.('stock')}
           className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 text-sm font-medium hover:bg-amber-100 transition-colors flex items-center gap-1.5">
           <ArrowRight className="w-4 h-4" /> Voir stock

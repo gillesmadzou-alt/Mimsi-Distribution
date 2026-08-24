@@ -363,7 +363,7 @@ export default function AttendancePage({ onNavigate }: { onNavigate?: (page: str
           <UserCheck className="w-5 h-5 text-blue-500" />
           Liste de présence
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="mobile-action-stack flex items-center gap-2 sm:w-auto sm:flex-row">
           {onNavigate && (
             <>
               <button
