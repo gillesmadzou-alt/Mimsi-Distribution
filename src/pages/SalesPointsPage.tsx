@@ -64,7 +64,10 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [drivers, setDrivers] = useState<Driver[]>([]);
 
-  const canEdit = [1, 4, 5, 6, 7].includes(profile?.role ?? 1);
+  // La gestion du réseau de points de vente fait partie du périmètre de la
+  // gestion de stock. Le rôle 16 est l'assistant et bénéficie du même accès
+  // opérationnel que le rôle 2, sans obtenir les droits de suppression.
+  const canEdit = [1, 2, 4, 5, 6, 7, 16].includes(profile?.role ?? 1);
   const canDelete = [1, 4, 5, 6, 7].includes(profile?.role ?? 1);
   const canAddPayment = (profile?.role ?? 1) >= 1;
 
