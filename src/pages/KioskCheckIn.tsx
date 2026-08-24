@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase, UserRole } from '@/lib/supabase';
+import { cachePageData, getCachedPageData } from '@/lib/readCache';
+import { enqueueJob } from '@/lib/offlineQueue';
 import { Truck, Camera, RefreshCw, Check, LogOut, User, Loader2, SwitchCamera, LogIn, LogOut as LogOutIcon, Shield, Mail, Lock, Eye, EyeOff, Clock, ChevronDown } from 'lucide-react';
 
 type Step = 'mode' | 'form' | 'photo' | 'success' | 'manual-arrival';
@@ -55,6 +57,7 @@ export default function KioskCheckIn() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
+  const [pointedAt, setPointedAt] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [cameraError, setCameraError] = useState<string | null>(null);
 
@@ -64,8 +67,9 @@ export default function KioskCheckIn() {
     setPeopleLoading(true);
     try {
       if (!navigator.onLine) {
-        setPeople([]);
-        setError('Le kiosque nécessite une connexion Internet sécurisée.');
+        const cached = await getCachedPageData<KioskPerson[]>('kiosk_people');
+        setPeople(cached?.data ?? []);
+        if (!cached?.data?.length) setError('La liste du personnel doit être chargée une première fois avec Internet.');
         return;
       }
 
@@ -76,7 +80,9 @@ export default function KioskCheckIn() {
       const all: KioskPerson[] = (data ?? []).map((person: { id: string; full_name: string; role: UserRole; person_type: KioskPerson['type'] }) => ({
         id: person.id, full_name: person.full_name, role: person.role, type: person.person_type,
       }));
-      setPeople(uniqueKioskPeople(all));
+      const uniquePeople = uniqueKioskPeople(all);
+      setPeople(uniquePeople);
+      await cachePageData('kiosk_people', uniquePeople);
     } catch {
       setPeople([]);
       setError('Impossible de charger la liste du personnel. Vérifiez la connexion.');
@@ -134,6 +140,7 @@ export default function KioskCheckIn() {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
     setPhotoDataUrl(dataUrl);
+    setPointedAt(new Date().toISOString());
     if (stream) {
       stream.getTracks().forEach((t) => t.stop());
       setStream(null);
@@ -142,12 +149,14 @@ export default function KioskCheckIn() {
 
   const retakePhoto = () => {
     setPhotoDataUrl(null);
+    setPointedAt(null);
     startCamera(facingMode);
   };
 
   const switchCamera = () => {
     const next = facingMode === 'user' ? 'environment' : 'user';
     setPhotoDataUrl(null);
+    setPointedAt(null);
     startCamera(next);
   };
 
@@ -175,14 +184,24 @@ export default function KioskCheckIn() {
     setError(null);
 
     try {
-      if (!navigator.onLine) throw new Error('Connexion Internet requise.');
+      const body = {
+        action: checkType,
+        personId: selectedPerson!.id,
+        personType: selectedPerson!.type,
+        photo: photoDataUrl,
+        recordedAt: pointedAt ?? new Date().toISOString(),
+      };
+      if (!navigator.onLine) {
+        await enqueueJob(
+          `Pointage ${checkType === 'arrival' ? 'arrivée' : 'départ'} — ${selectedPerson!.full_name}`,
+          'attendance',
+          [{ id: crypto.randomUUID(), table: 'kiosk-checkin', operation: 'function', body }],
+        );
+        setStep('success');
+        return;
+      }
       const { data, error: checkinError } = await supabase.functions.invoke('kiosk-checkin', {
-        body: {
-          action: checkType,
-          personId: selectedPerson!.id,
-          personType: selectedPerson!.type,
-          photo: photoDataUrl,
-        },
+        body,
       });
       if (checkinError || !data?.success) throw new Error(data?.error ?? 'Pointage refusé.');
 
@@ -279,6 +298,7 @@ export default function KioskCheckIn() {
     setCheckType('arrival');
     setSelectedPersonId('');
     setPhotoDataUrl(null);
+    setPointedAt(null);
     setError(null);
     setManualEmail('');
     setManualPassword('');

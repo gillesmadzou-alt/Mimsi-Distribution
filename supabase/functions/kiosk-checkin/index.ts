@@ -15,18 +15,16 @@ const json = (body: Record<string, unknown>, status = 200) => new Response(JSON.
   headers: { ...corsHeaders, "Content-Type": "application/json" },
 });
 
-function todayInBusinessTimezone(): string {
+function dateAndTimeInBusinessTimezone(recordedAt: Date): { date: string; time: string } {
   const timezone = Deno.env.get("APP_TIME_ZONE") ?? "Africa/Abidjan";
   const parts = new Intl.DateTimeFormat("en", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" })
-    .formatToParts(new Date());
+    .formatToParts(recordedAt);
   const part = (type: string) => parts.find((item) => item.type === type)?.value;
-  return `${part("year")}-${part("month")}-${part("day")}`;
-}
-
-function localTime(): string {
-  const timezone = Deno.env.get("APP_TIME_ZONE") ?? "Africa/Abidjan";
-  return new Intl.DateTimeFormat("en-GB", { timeZone: timezone, hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" })
-    .format(new Date());
+  return {
+    date: `${part("year")}-${part("month")}-${part("day")}`,
+    time: new Intl.DateTimeFormat("en-GB", { timeZone: timezone, hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" })
+      .format(recordedAt),
+  };
 }
 
 function decodePhoto(value: unknown): Uint8Array | null {
@@ -52,8 +50,9 @@ Deno.serve(async (req) => {
     const personId = body.personId;
     const personType = body.personType as PersonType;
     const photo = decodePhoto(body.photo);
+    const recordedAt = typeof body.recordedAt === "string" ? new Date(body.recordedAt) : new Date();
     if (!(["arrival", "departure"] as string[]).includes(action) || typeof personId !== "string" ||
-      !(["profile", "driver", "baker", "kneader"] as string[]).includes(personType) || !photo) {
+      !(["profile", "driver", "baker", "kneader"] as string[]).includes(personType) || !photo || Number.isNaN(recordedAt.getTime())) {
       return json({ error: "Données de pointage invalides." }, 400);
     }
 
@@ -69,8 +68,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!person) return json({ error: "Personne inactive ou introuvable." }, 404);
 
-    const date = todayInBusinessTimezone();
-    const time = localTime();
+    const { date, time } = dateAndTimeInBusinessTimezone(recordedAt);
     const filePath = `attendance/${date}/${personType}/${personId}/${action}-${crypto.randomUUID()}.jpg`;
     const { error: uploadError } = await admin.storage.from("attendance-photos")
       .upload(filePath, photo, { contentType: "image/jpeg", upsert: false });
