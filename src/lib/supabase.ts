@@ -97,7 +97,8 @@ export interface SalesPoint {
   owner_phone: string | null;
   owner_phone_secondary: string | null;
   owner_email: string | null;
-  client_type: 'detail' | 'grossiste' | 'supermarche' | 'restaurant_hotel' | 'entreprise' | 'autre';
+  client_type: 'detail' | 'grossiste' | 'boutique' | 'kiosque' | 'mobile_money' | 'supermarche' | 'restaurant_hotel' | 'entreprise' | 'autre';
+  client_type_other: string | null;
   delivery_days: string[];
   photo_url: string | null;
   is_active: boolean;

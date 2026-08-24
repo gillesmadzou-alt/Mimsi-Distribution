@@ -34,6 +34,9 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 const CLIENT_TYPE_LABELS: Record<SalesPoint['client_type'], string> = {
   detail: 'Détaillant',
   grossiste: 'Grossiste',
+  boutique: 'Boutique',
+  kiosque: 'Kiosque',
+  mobile_money: 'Point Mobile Money',
   supermarche: 'Supermarché',
   restaurant_hotel: 'Restaurant / hôtel',
   entreprise: 'Entreprise',
@@ -58,7 +61,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
   const [form, setForm] = useState({
     name: '', address: '', district: '', zone: '',
     arrondissements: [] as string[], arrondissementInput: '',
-    owner_full_name: '', client_type: 'detail' as SalesPoint['client_type'], owner_phone: '', owner_phone_secondary: '', owner_email: '',
+    owner_full_name: '', client_type: 'detail' as SalesPoint['client_type'], client_type_other: '', owner_phone: '', owner_phone_secondary: '', owner_email: '',
     delivery_days: [] as string[], gps_lat: '', gps_lng: '',
     is_active: true, is_new: true, quota_amount: '4000',
     driver_id: '' as string,
@@ -148,7 +151,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
     setForm({
       name: '', address: '', district: '', zone: '',
       arrondissements: [], arrondissementInput: '',
-      owner_full_name: '', client_type: 'detail', owner_phone: '', owner_phone_secondary: '', owner_email: '',
+      owner_full_name: '', client_type: 'detail', client_type_other: '', owner_phone: '', owner_phone_secondary: '', owner_email: '',
       delivery_days: [], gps_lat: '', gps_lng: '',
       is_active: true, is_new: true, quota_amount: '4000',
       driver_id: '',
@@ -163,6 +166,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
       arrondissements: point.arrondissements ?? [], arrondissementInput: '',
       owner_full_name: point.owner_full_name ?? point.owner_name ?? '',
       client_type: point.client_type ?? 'detail',
+      client_type_other: point.client_type_other ?? '',
       owner_phone: point.owner_phone ?? '', owner_phone_secondary: point.owner_phone_secondary ?? '',
       owner_email: point.owner_email ?? '',
       delivery_days: point.delivery_days ?? [],
@@ -207,6 +211,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
       arrondissements: form.arrondissements,
       owner_full_name: form.owner_full_name || null,
       client_type: form.client_type,
+      client_type_other: form.client_type === 'autre' ? form.client_type_other.trim() : null,
       owner_phone: form.owner_phone || null,
       owner_phone_secondary: form.owner_phone_secondary || null,
       owner_email: form.owner_email || null,
@@ -237,6 +242,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
       owner_name: null,
       owner_full_name: form.owner_full_name || null,
       client_type: form.client_type,
+      client_type_other: form.client_type === 'autre' ? form.client_type_other.trim() : null,
       owner_phone: form.owner_phone || null,
       owner_phone_secondary: form.owner_phone_secondary || null,
       owner_email: form.owner_email || null,
@@ -657,6 +663,18 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
                   ))}
                 </select>
               </div>
+              {form.client_type === 'autre' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Précisez le type de client *</label>
+                  <input
+                    required
+                    value={form.client_type_other}
+                    onChange={(e) => setForm({ ...form, client_type_other: e.target.value })}
+                    placeholder="Ex. école, association, administration"
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none"
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Téléphone principal *</label>
