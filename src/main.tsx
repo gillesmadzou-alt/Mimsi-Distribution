@@ -11,7 +11,7 @@ createRoot(document.getElementById('root')!).render(
 
 // Change this value for every production PWA release. It gives browsers a
 // new service-worker URL, even when they retained an older script in cache.
-const SW_VERSION = 'v55';
+const SW_VERSION = 'v56';
 
 if ('serviceWorker' in navigator) {
   let refreshing = false;
@@ -32,7 +32,6 @@ if ('serviceWorker' in navigator) {
         <p style="font-size:14px;color:#6b7280;margin:0 0 24px;line-height:1.5;">Une nouvelle version de l'application est prête. Mettez à jour pour profiter des dernières améliorations du mode hors ligne.</p>
         <div style="display:flex;flex-direction:column;gap:8px;">
           <button id="sw-update-btn" style="background:#f59e0b;color:white;border:none;border-radius:12px;padding:12px 20px;font-size:15px;font-weight:600;cursor:pointer;transition:background 0.2s;">Mettre à jour maintenant</button>
-          <button id="sw-update-later" style="background:transparent;color:#9ca3af;border:none;font-size:14px;cursor:pointer;padding:8px;">Plus tard</button>
         </div>
       </div>
     `;
@@ -55,10 +54,6 @@ if ('serviceWorker' in navigator) {
           window.location.reload();
         }
       });
-    });
-
-    document.getElementById('sw-update-later')?.addEventListener('click', () => {
-      overlay.remove();
     });
   };
 
