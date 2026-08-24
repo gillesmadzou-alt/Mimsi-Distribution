@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mimsi-distribution-v58';
+const CACHE_NAME = 'mimsi-distribution-v60';
 const PHOTO_CACHE_NAME = 'mimsi-attendance-photos-v1';
 const PRECACHE_URLS = [
   '/',
@@ -8,7 +8,10 @@ const PRECACHE_URLS = [
 ];
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
+  // Lors d'une mise à jour, le nouveau service worker doit rester en attente
+  // afin que l'application puisse proposer explicitement « Mettre à jour ».
+  // Le premier service worker s'active automatiquement lorsqu'il n'y en a pas
+  // déjà un qui contrôle l'application.
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) =>
       Promise.allSettled(PRECACHE_URLS.map((u) => cache.add(u)))
