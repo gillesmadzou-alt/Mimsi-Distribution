@@ -31,6 +31,15 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   autre: 'Autre',
 };
 
+const CLIENT_TYPE_LABELS: Record<SalesPoint['client_type'], string> = {
+  detail: 'Détaillant',
+  grossiste: 'Grossiste',
+  supermarche: 'Supermarché',
+  restaurant_hotel: 'Restaurant / hôtel',
+  entreprise: 'Entreprise',
+  autre: 'Autre',
+};
+
 export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: string) => void }) {
   const { profile } = useAuth();
   const { toast } = useToast();
@@ -49,7 +58,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
   const [form, setForm] = useState({
     name: '', address: '', district: '', zone: '',
     arrondissements: [] as string[], arrondissementInput: '',
-    owner_full_name: '', owner_phone: '', owner_phone_secondary: '', owner_email: '',
+    owner_full_name: '', client_type: 'detail' as SalesPoint['client_type'], owner_phone: '', owner_phone_secondary: '', owner_email: '',
     delivery_days: [] as string[], gps_lat: '', gps_lng: '',
     is_active: true, is_new: true, quota_amount: '4000',
     driver_id: '' as string,
@@ -139,7 +148,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
     setForm({
       name: '', address: '', district: '', zone: '',
       arrondissements: [], arrondissementInput: '',
-      owner_full_name: '', owner_phone: '', owner_phone_secondary: '', owner_email: '',
+      owner_full_name: '', client_type: 'detail', owner_phone: '', owner_phone_secondary: '', owner_email: '',
       delivery_days: [], gps_lat: '', gps_lng: '',
       is_active: true, is_new: true, quota_amount: '4000',
       driver_id: '',
@@ -153,6 +162,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
       name: point.name, address: point.address ?? '', district: point.district, zone: point.zone ?? '',
       arrondissements: point.arrondissements ?? [], arrondissementInput: '',
       owner_full_name: point.owner_full_name ?? point.owner_name ?? '',
+      client_type: point.client_type ?? 'detail',
       owner_phone: point.owner_phone ?? '', owner_phone_secondary: point.owner_phone_secondary ?? '',
       owner_email: point.owner_email ?? '',
       delivery_days: point.delivery_days ?? [],
@@ -196,6 +206,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
       zone: form.zone,
       arrondissements: form.arrondissements,
       owner_full_name: form.owner_full_name || null,
+      client_type: form.client_type,
       owner_phone: form.owner_phone || null,
       owner_phone_secondary: form.owner_phone_secondary || null,
       owner_email: form.owner_email || null,
@@ -225,6 +236,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
       zone: form.zone,
       owner_name: null,
       owner_full_name: form.owner_full_name || null,
+      client_type: form.client_type,
       owner_phone: form.owner_phone || null,
       owner_phone_secondary: form.owner_phone_secondary || null,
       owner_email: form.owner_email || null,
@@ -631,6 +643,19 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nom complet du propriétaire *</label>
                 <input required value={form.owner_full_name} onChange={(e) => setForm({ ...form, owner_full_name: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type de client *</label>
+                <select
+                  required
+                  value={form.client_type}
+                  onChange={(e) => setForm({ ...form, client_type: e.target.value as SalesPoint['client_type'] })}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 bg-white text-gray-700 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none"
+                >
+                  {Object.entries(CLIENT_TYPE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
