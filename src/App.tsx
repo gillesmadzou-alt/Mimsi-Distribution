@@ -6,7 +6,7 @@ import { ToastProvider } from '@/contexts/ToastContext';
 import { ConfirmProvider } from '@/contexts/ConfirmContext';
 import AuthPage from '@/pages/AuthPage';
 import AppShell, { PageId, NAV_SECTIONS } from '@/components/AppShell';
-import { UserRole, ROLE_LABELS } from '@/lib/supabase';
+import { UserRole, ROLE_LABELS, getRoleAccessLevel } from '@/lib/supabase';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 import MandatoryLocationGate from '@/components/MandatoryLocationGate';
 import DashboardPage from '@/pages/DashboardPage';
@@ -110,7 +110,7 @@ function OfficeApp() {
 
   const role = (profile?.role ?? 1) as UserRole;
   const navItem = NAV_SECTIONS.flatMap((s) => s.items).find((i) => i.id === page);
-  const hasAccess = !navItem || (role >= navItem.minRole && (!navItem.allowedRoles || navItem.allowedRoles.includes(role)));
+  const hasAccess = !navItem || (getRoleAccessLevel(role) >= navItem.minRole && (!navItem.allowedRoles || navItem.allowedRoles.includes(role)));
 
   useEffect(() => {
     if (!hasAccess) {

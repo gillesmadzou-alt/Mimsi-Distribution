@@ -58,7 +58,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const allowedRoles = [1, 2, 3, 4, 5, 9, 10, 12, 13, 14];
+    const allowedRoles = [1, 2, 3, 4, 5, 9, 10, 12, 13, 14, 16];
     if (!allowedRoles.includes(role)) {
       return new Response(JSON.stringify({ error: "Rôle non autorisé" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -1,7 +1,7 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSync } from '@/contexts/SyncContext';
-import { ROLE_LABELS, UserRole } from '@/lib/supabase';
+import { ROLE_LABELS, UserRole, getRoleAccessLevel } from '@/lib/supabase';
 import {
   LayoutDashboard, Users, MapPin, Package, Route, Undo2,
   LogOut, Truck, ChevronDown, ChevronRight, ArrowLeft,
@@ -259,7 +259,7 @@ export default function AppShell({ current, onNavigate, onBack, canGoBack, child
 
   if (!profile) return null;
   const role = Number(profile.role) as UserRole;
-  if (isNaN(role) || role < 1 || role > 14) return null;
+  if (isNaN(role) || role < 1 || role > 16 || role === 15) return null;
 
   const toggleSection = (label: string) => {
     setCollapsed((prev) => {
@@ -272,7 +272,7 @@ export default function AppShell({ current, onNavigate, onBack, canGoBack, child
 
   const visibleSections = NAV_SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter((item) => role >= item.minRole && (!item.allowedRoles || item.allowedRoles.includes(role))),
+    items: section.items.filter((item) => getRoleAccessLevel(role) >= item.minRole && (!item.allowedRoles || item.allowedRoles.includes(role))),
   })).filter((section) => section.items.length > 0);
 
   const currentItem = visibleSections.flatMap((s) => s.items).find((i) => i.id === current);

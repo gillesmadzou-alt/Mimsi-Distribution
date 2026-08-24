@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  supabase, formatFCFA, ROLE_LABELS,
+  supabase, formatFCFA, ROLE_LABELS, getRoleAccessLevel,
   type AttendanceRecord, type Profile, type Driver, type Baker, type Kneader, type UserRole,
   ATTENDANCE_STATUS_LABELS, ATTENDANCE_STATUS_META,
 } from '@/lib/supabase';
@@ -44,7 +44,7 @@ export default function AttendancePage({ onNavigate }: { onNavigate?: (page: str
     personId: '', arrival: '', departure: '', status: 'present', notes: '',
   });
 
-  const canDelete = profile && profile.role >= 4;
+  const canDelete = profile && getRoleAccessLevel(profile.role) >= 4;
   const canManualEntry = profile && (profile.role === 4 || profile.role === 5 || profile.role === 6);
   const { fetchWithCache, isOffline } = useOfflineFetch();
 

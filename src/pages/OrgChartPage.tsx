@@ -57,7 +57,7 @@ const DEPARTMENTS: Department[] = [
     name: 'Logistique',
     icon: Truck,
     color: 'text-slate-700',
-    roles: [10, 11, 12, 13, 14],
+    roles: [2, 16, 10, 11, 12, 13, 14],
   },
   {
     name: 'Gouvernance',
@@ -83,6 +83,7 @@ const ROLE_META: Record<number, { title: string; icon: typeof Crown; color: stri
   13: { title: 'Plongeuse', icon: Droplets, color: 'text-sky-700', bgColor: 'bg-sky-50', borderColor: 'border-sky-200' },
   14: { title: 'Femme de ménage', icon: Sparkles, color: 'text-teal-700', bgColor: 'bg-teal-50', borderColor: 'border-teal-200' },
   15: { title: 'Pétrisseur', icon: Droplets, color: 'text-amber-800', bgColor: 'bg-amber-50', borderColor: 'border-amber-300' },
+  16: { title: 'Assistant en gestion de stock', icon: Package, color: 'text-cyan-700', bgColor: 'bg-cyan-50', borderColor: 'border-cyan-200' },
 };
 
 interface OrgChartData {
