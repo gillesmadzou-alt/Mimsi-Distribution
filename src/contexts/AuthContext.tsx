@@ -88,7 +88,7 @@ function getCachedProfile(): Profile | null {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed.id !== 'string') return null;
     parsed.role = Number(parsed.role);
-    if (isNaN(parsed.role) || parsed.role < 1 || parsed.role > 14) return null;
+    if (isNaN(parsed.role) || parsed.role < 1 || parsed.role > 16 || parsed.role === 15) return null;
     return parsed as Profile;
   } catch {
     return null;

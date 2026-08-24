@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { supabase, LeavePeriod, LeaveStatus, LEAVE_STATUS_META, Driver, Profile, UserRole, ROLE_LABELS } from '@/lib/supabase';
+import { supabase, LeavePeriod, LeaveStatus, LEAVE_STATUS_META, Driver, Profile, UserRole, ROLE_LABELS, getRoleAccessLevel } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -60,7 +60,7 @@ export default function LeavePage({ onNavigate }: { onNavigate?: (page: string) 
       setLeaves(cachedLeaves);
       setDrivers(cachedDrivers);
       setProfiles(cachedProfiles);
-      setManagers(cachedProfiles.filter((p) => p.role >= 4));
+      setManagers(cachedProfiles.filter((p) => getRoleAccessLevel(p.role) >= 4));
     }
     setLoading(false);
   }, [fetchWithCache]);
