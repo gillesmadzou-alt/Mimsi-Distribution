@@ -89,11 +89,13 @@ export default function BatchesPage() {
   const [showStockAlerts, setShowStockAlerts] = useState(false);
   const { fetchWithCache, isOffline } = useOfflineFetch();
 
-  const canCreateBatch = [2, 4, 5, 6].includes(profile?.role ?? 1);
-  const canSuperviseBatch = [4, 5, 6].includes(profile?.role ?? 1);
+  // Le rôle 16 est l'assistant de gestion de stock : il exerce les mêmes
+  // opérations quotidiennes que la gestionnaire (rôle 2).
+  const canCreateBatch = [2, 4, 5, 6, 16].includes(profile?.role ?? 1);
+  const canSuperviseBatch = [2, 4, 5, 6, 16].includes(profile?.role ?? 1);
   const canApproveBatch = [4, 5, 6].includes(profile?.role ?? 1);
   const canDeposit = (profile?.role ?? 1) >= 2;
-  const canDirectDeliver = (profile?.role ?? 1) === 4 || (profile?.role ?? 1) === 5 || (profile?.role ?? 1) === 6;
+  const canDirectDeliver = [2, 4, 5, 6, 16].includes(profile?.role ?? 1);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
