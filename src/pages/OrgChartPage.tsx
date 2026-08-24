@@ -72,11 +72,11 @@ const ROLE_META: Record<number, { title: string; icon: typeof Crown; color: stri
   2: { title: 'Gestionnaire de stock', icon: Package, color: 'text-cyan-700', bgColor: 'bg-cyan-50', borderColor: 'border-cyan-200' },
   3: { title: 'Comptable', icon: Calculator, color: 'text-emerald-700', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200' },
   4: { title: 'Directeur général adjoint', icon: Briefcase, color: 'text-orange-700', bgColor: 'bg-orange-50', borderColor: 'border-orange-200' },
-  5: { title: 'Directrice Générale', icon: Crown, color: 'text-amber-700', bgColor: 'bg-amber-50', borderColor: 'border-amber-200' },
+  5: { title: 'Directrice générale', icon: Crown, color: 'text-amber-700', bgColor: 'bg-amber-50', borderColor: 'border-amber-200' },
   6: { title: 'Administrateur', icon: ShieldCheck, color: 'text-rose-700', bgColor: 'bg-rose-50', borderColor: 'border-rose-200' },
   7: { title: 'Directrice Commerciale', icon: Users, color: 'text-blue-700', bgColor: 'bg-blue-50', borderColor: 'border-blue-200' },
   8: { title: 'Responsable de production', icon: ChefHat, color: 'text-orange-700', bgColor: 'bg-orange-50', borderColor: 'border-orange-200' },
-  9: { title: 'Pétrisseur', icon: Flame, color: 'text-red-700', bgColor: 'bg-red-50', borderColor: 'border-red-200' },
+  9: { title: 'Fournier', icon: Flame, color: 'text-red-700', bgColor: 'bg-red-50', borderColor: 'border-red-200' },
   10: { title: 'commercial', icon: Car, color: 'text-slate-700', bgColor: 'bg-slate-50', borderColor: 'border-slate-200' },
   11: { title: 'commercial externe', icon: Car, color: 'text-slate-600', bgColor: 'bg-slate-50', borderColor: 'border-slate-300' },
   12: { title: 'Agent de sécurité', icon: ShieldAlert, color: 'text-indigo-700', bgColor: 'bg-indigo-50', borderColor: 'border-indigo-200' },
@@ -167,13 +167,13 @@ export default function OrgChartPage({ onNavigate }: { onNavigate?: (page: strin
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-gradient-to-r from-amber-500 to-orange-600 rounded-3xl p-6 text-white shadow-lg">
+      <div className="bg-gradient-to-r from-amber-500 to-orange-600 rounded-3xl p-4 sm:p-6 text-white shadow-lg">
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
             <Building2 className="w-7 h-7" />
           </div>
-          <div>
-            <h2 className="text-2xl font-bold">MIMSI — Organigramme</h2>
+          <div className="min-w-0">
+            <h2 className="text-xl sm:text-2xl font-bold break-words">MIMSI — Organigramme</h2>
             <p className="text-amber-50 text-sm mt-1">
               {totalStaff} employé{totalStaff > 1 ? 's' : ''} actif{totalStaff > 1 ? 's' : ''}
               {vacantCount > 0 && ` · ${vacantCount} poste${vacantCount > 1 ? 's' : ''} vacant${vacantCount > 1 ? 's' : ''}`}
@@ -217,12 +217,12 @@ export default function OrgChartPage({ onNavigate }: { onNavigate?: (page: strin
             {/* Department header */}
             <button
               onClick={() => setExpandedDept(isExpanded ? '' : dept.name)}
-              className="w-full flex items-center gap-3 px-5 py-4 hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center gap-3 px-4 sm:px-5 py-4 hover:bg-gray-50 transition-colors"
             >
               <div className={`w-10 h-10 rounded-xl ${dept.color} bg-gray-100 flex items-center justify-center`}>
                 <DeptIcon className="w-5 h-5" />
               </div>
-              <div className="flex-1 text-left">
+              <div className="flex-1 min-w-0 text-left">
                 <h3 className="font-semibold text-gray-900">{dept.name}</h3>
                 <p className="text-xs text-gray-500">
                   {deptMembers.length} membre{deptMembers.length > 1 ? 's' : ''}
@@ -234,7 +234,7 @@ export default function OrgChartPage({ onNavigate }: { onNavigate?: (page: strin
 
             {/* Department body — org tree */}
             {isExpanded && (
-              <div className="px-5 pb-6 pt-2">
+              <div className="px-3 sm:px-5 pb-6 pt-2">
                 {dept.name === 'Administration' ? (
                   <AdminOrgTree holders={getHolders} onNavigate={onNavigate} />
                 ) : dept.name === 'Commercialisation' ? (
@@ -298,12 +298,12 @@ function ProductionOrgTree({ holders, onNavigate }: { holders: (role: number) =>
       {/* Connector */}
       <div className="w-px h-8 bg-gray-200" />
 
-      {/* Level 3 — pétrisseurs */}
+      {/* Level 3 — Fournier(s) */}
       <div className="w-full">
         {forniers.length === 0 ? (
           <div className="bg-red-50 border-2 border-dashed border-red-200 rounded-2xl p-5 text-center max-w-sm mx-auto">
             <UserX className="w-6 h-6 text-red-400 mx-auto mb-2" />
-            <p className="font-semibold text-red-700">Aucun pétrisseur</p>
+            <p className="font-semibold text-red-700">Aucun fournier</p>
             <span className="inline-block mt-2 px-3 py-1 rounded-full bg-red-100 text-red-600 text-xs font-medium">
               Poste vacant
             </span>
@@ -363,7 +363,7 @@ function AdminOrgTree({ holders, onNavigate }: { holders: (role: number) => OrgP
 
   return (
     <div className="flex flex-col items-center pt-4">
-      {/* Level 1 — Directrice Générale */}
+      {/* Level 1 — Directrice générale */}
       <div className="flex flex-col items-center">
         <RoleCard role={5} holders={directrice} large onNavigate={onNavigate} />
       </div>
@@ -395,7 +395,7 @@ function RoleCard({ role, holders, large, onNavigate }: { role: number; holders:
 
   if (isVacant) {
     return (
-      <div className={`relative ${large ? 'w-full max-w-sm' : ''} ${meta.bgColor} ${meta.borderColor} border-2 border-dashed rounded-2xl p-5 text-center`}>
+      <div className={`relative w-full min-w-0 ${large ? 'max-w-sm' : ''} ${meta.bgColor} ${meta.borderColor} border-2 border-dashed rounded-2xl p-4 sm:p-5 text-center`}>
         <div className={`w-12 h-12 rounded-xl bg-white flex items-center justify-center mx-auto mb-3`}>
           <UserX className={`w-6 h-6 text-red-400`} />
         </div>
@@ -408,11 +408,11 @@ function RoleCard({ role, holders, large, onNavigate }: { role: number; holders:
   }
 
   return (
-    <div className={`${large ? 'w-full max-w-sm' : ''} space-y-3`}>
+    <div className={`w-full min-w-0 ${large ? 'max-w-sm' : ''} space-y-3`}>
       {holders.map((person) => (
         <div
           key={person.id}
-          className={`${meta.bgColor} ${meta.borderColor} border-2 rounded-2xl p-5 transition-all hover:shadow-md${navTarget ? ' cursor-pointer' : ''}`}
+          className={`${meta.bgColor} ${meta.borderColor} border-2 rounded-2xl p-4 sm:p-5 transition-all hover:shadow-md${navTarget ? ' cursor-pointer' : ''}`}
           onClick={navTarget ? () => onNavigate?.(navTarget) : undefined}
         >
           <div className="flex items-start gap-4">
