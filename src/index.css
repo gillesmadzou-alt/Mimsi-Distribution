@@ -2,6 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+/* The application shell is intentionally as wide as the dashboard on every
+   device.  A few data pages include long filters, tables or action groups;
+   without these guards one of those children could expand the document wider
+   than a phone viewport and shift the whole page off-screen. */
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
 /* Native selects remain accessible on mobile while receiving the same warm,
    rounded visual language as the rest of the PWA. */
 select:not([multiple]) {
@@ -49,6 +62,62 @@ select:not([multiple]):disabled {
    the reduced viewport while the keyboard is open) and keeps every field
    reachable by scrolling inside the panel. */
 @media (max-width: 639px) {
+  /* Keep every route inside the same mobile column as the dashboard. */
+  main {
+    width: 100%;
+    min-width: 0;
+    overflow-x: clip;
+  }
+
+  main > * {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Fixed minimum widths are useful on desktop filters but must never make a
+     mobile route wider than its viewport.  Data tables keep their own
+     overflow-x-auto wrapper and remain horizontally scrollable when needed. */
+  main [class*="min-w-"] {
+    min-width: 0 !important;
+    max-width: 100%;
+  }
+
+  main .overflow-x-auto {
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Headers, filters and action controls may wrap instead of forcing a
+     horizontal page scroll. */
+  main .flex[class*="justify-between"],
+  main .flex:has(> input),
+  main .flex:has(> select) {
+    flex-wrap: wrap;
+  }
+
+  main .flex:has(> input) > input,
+  main .flex:has(> select) > select {
+    min-width: 0;
+  }
+
+  /* Dense desktop metric and button grids become two-column grids on a
+     phone; forms use one field per row for a comfortable touch target. */
+  main .grid.grid-cols-3,
+  main .grid.grid-cols-4,
+  main .grid.grid-cols-5,
+  main .grid.grid-cols-6,
+  main .grid.grid-cols-7 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  main form .grid.grid-cols-2,
+  main form .grid.grid-cols-3,
+  main form .grid.grid-cols-4 {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
   .fixed.inset-0:has(> .bg-white.rounded-2xl:not(.stock-movement-panel)) {
     align-items: flex-end !important;
     padding: 0 !important;
