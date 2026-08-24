@@ -103,7 +103,7 @@ export default function AuthPage() {
                 <Camera className="w-5 h-5 shrink-0 mt-0.5" />
                 <span>
                   Le mode pointage permet à chaque personne de s'enregistrer elle-même :
-                  nom, prénom, fonction et une photo obligatoire. Aucune connexion requise.
+                  nom, prénom, fonction et une photo obligatoire. Il fonctionne hors ligne après un premier chargement avec Internet.
                 </span>
               </div>
             )}

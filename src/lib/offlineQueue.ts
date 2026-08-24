@@ -3,7 +3,7 @@ import { supabase } from './supabase';
 export interface QueueStep {
   id: string;
   table: string;
-  operation: 'insert' | 'update' | 'delete' | 'rpc';
+  operation: 'insert' | 'update' | 'delete' | 'rpc' | 'function';
   body: Record<string, unknown> | Record<string, unknown>[];
   filter?: { column: string; value: unknown };
   dependsOn?: string;
@@ -148,6 +148,12 @@ export async function executeStep(step: QueueStep, results: Map<string, unknown>
   } else if (step.operation === 'rpc') {
     const res = await supabase.rpc(step.table, body as Record<string, unknown>);
     data = res.data; error = res.error;
+  } else if (step.operation === 'function') {
+    const res = await supabase.functions.invoke(step.table, { body });
+    data = res.data; error = res.error;
+    if (!error && !(data as { success?: boolean } | null)?.success) {
+      error = new Error((data as { error?: string } | null)?.error ?? 'Opération distante refusée.');
+    }
   } else {
     if (!step.filter) throw new Error(`Delete step ${step.id} is missing filter`);
     const res = await (query as any).delete().eq(step.filter.column, step.filter.value);
