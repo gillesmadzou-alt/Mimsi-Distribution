@@ -298,13 +298,17 @@ export default function IngredientsPage({ onNavigate }: { onNavigate?: (page: st
           variance: maxVariancePct,
           unit: 'pates',
           status: 'non_resolu',
-          notified_roles: [4, 5, 6],
+          notified_roles: [2, 4, 5, 6, 16],
           comment: discMsg,
         });
-        const { data: directors } = await supabase.from('profiles').select('id').in('role', [4, 5, 6]).eq('is_active', true);
-        if (directors && directors.length > 0) {
+        const { data: complianceRecipients } = await supabase
+          .from('profiles')
+          .select('id')
+          .in('role', [2, 4, 5, 6, 16])
+          .eq('is_active', true);
+        if (complianceRecipients && complianceRecipients.length > 0) {
           await supabase.from('app_notifications').insert(
-            directors.map((d) => ({
+            complianceRecipients.map((d) => ({
               user_id: d.id,
               title: 'Alerte conformité ingrédients pâte',
               message: discMsg,
