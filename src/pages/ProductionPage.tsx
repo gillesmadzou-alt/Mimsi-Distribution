@@ -356,13 +356,17 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
           variance: madeleineVariance,
           unit: 'madeleines',
           status: 'non_resolu',
-          notified_roles: [4, 5, 6],
+          notified_roles: [2, 4, 5, 6, 16],
           comment: discComment,
         });
-        const { data: directors2 } = await supabase.from('profiles').select('id').in('role', [4, 5, 6]).eq('is_active', true);
-        if (directors2 && directors2.length > 0) {
+        const { data: complianceRecipients } = await supabase
+          .from('profiles')
+          .select('id')
+          .in('role', [2, 4, 5, 6, 16])
+          .eq('is_active', true);
+        if (complianceRecipients && complianceRecipients.length > 0) {
           await supabase.from('app_notifications').insert(
-            directors2.map((d) => ({
+            complianceRecipients.map((d) => ({
               user_id: d.id,
               title: 'Alerte conformité madeleines',
               message: discMsg,
