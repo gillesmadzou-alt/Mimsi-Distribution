@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   supabase, DeliveryBatch, Driver, PotType, SalesPoint, Deposit, Receivable,
   Barcode as BarcodeType, formatFCFA, createNotification,
@@ -85,6 +85,7 @@ export default function BatchesPage() {
   const [scannedBarcodes, setScannedBarcodes] = useState<{ code: string; barcode?: BarcodeType }[]>([]);
   const [scanTarget, setScanTarget] = useState<number | null>(null);
   const [summaryBatch, setSummaryBatch] = useState<(DeliveryBatch & { driver?: Driver; pot_type?: PotType; deposits?: Deposit[]; sales_points?: BatchSalesPoint[]; batch_pot_types?: BatchPotType[] }) | null>(null);
+  const realtimeReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [stockAlerts, setStockAlerts] = useState<{ pot_type: PotType; current: number; threshold: number }[]>([]);
   const [showStockAlerts, setShowStockAlerts] = useState(false);
   const { fetchWithCache, isOffline } = useOfflineFetch();
@@ -246,19 +247,26 @@ export default function BatchesPage() {
 
   useEffect(() => {
     if (isOffline) return;
+    const scheduleLoadAll = () => {
+      if (realtimeReloadTimer.current) clearTimeout(realtimeReloadTimer.current);
+      realtimeReloadTimer.current = setTimeout(() => { loadAll(); }, 350);
+    };
     const channel = supabase
       .channel('batches_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_batches' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'deposits' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'receivables' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'receivable_payments' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_expenses' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'batch_pot_types' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_batch_approvals' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'batch_sales_points' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_points' }, loadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_batches' }, scheduleLoadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'deposits' }, scheduleLoadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'receivables' }, scheduleLoadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'receivable_payments' }, scheduleLoadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_expenses' }, scheduleLoadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'batch_pot_types' }, scheduleLoadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_batch_approvals' }, scheduleLoadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'batch_sales_points' }, scheduleLoadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_points' }, scheduleLoadAll)
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      if (realtimeReloadTimer.current) clearTimeout(realtimeReloadTimer.current);
+      supabase.removeChannel(channel);
+    };
   }, [loadAll, isOffline]);
 
   const generateBatchCode = () => {
@@ -286,104 +294,48 @@ export default function BatchesPage() {
       return;
     }
 
-    const totalQty = needsPots ? form.pot_entries.reduce((s, pe) => s + pe.quantity, 0) : null;
-    const firstPotType = needsPots ? form.pot_entries[0].pot_type_id : null;
+    const { data, error } = await supabase.rpc('create_delivery_batch_bundle', {
+      p_batch_code: batchCode,
+      p_driver_id: form.driver_id,
+      p_zone: form.zone,
+      p_batch_type: form.batch_type,
+      p_sales_point_ids: form.sales_point_ids,
+      p_pot_entries: needsPots ? form.pot_entries : [],
+    });
 
-    const { data, error } = await supabase.from('delivery_batches').insert({
-      batch_code: batchCode,
-      driver_id: form.driver_id,
-      pot_type_id: firstPotType,
-      quantity: totalQty,
-      zone: form.zone,
-      batch_type: form.batch_type,
-      status: 'actif',
-    }).select().single();
-
-    if (!error && data) {
-      if (form.sales_point_ids.length > 0) {
-        await supabase.from('batch_sales_points').insert(
-          form.sales_point_ids.map((spId) => ({
-            batch_id: data.id,
-            sales_point_id: spId,
-          }))
-        );
-      }
-
-      if (needsPots) {
-        await supabase.from('batch_pot_types').insert(
-          form.pot_entries.map((pe) => ({
-            batch_id: data.id,
-            pot_type_id: pe.pot_type_id,
-            quantity: pe.quantity,
-            empty_pots: pe.empty_pots ?? 0,
-            empty_lids: pe.empty_lids ?? 0,
-          }))
-        );
-
-        for (const pe of form.pot_entries) {
-          const pot = potTypes.find((p) => p.id === pe.pot_type_id);
-          await supabase.from('stock_movements').insert({
-            pot_type_id: pe.pot_type_id,
-            movement_type: 'attribution',
-            quantity: pe.quantity,
-            batch_id: data.id,
-            driver_id: form.driver_id,
-            reference_id: data.id,
-            notes: `Attribution lot ${batchCode}`,
-          });
-          if (pot) {
-            const { error: stockErr } = await supabase.rpc('decrement_stock', {
-              p_pot_type_id: pe.pot_type_id,
-              p_quantity: pe.quantity,
-            });
-            if (stockErr) {
-              console.error('stock decrement failed:', stockErr);
-              setActionError(`Erreur de stock pour ${pot.name}.`);
-              return;
-            }
-          }
-        }
-      }
-
-      const potSummary = needsPots
-        ? form.pot_entries.map((pe) => {
-            const pt = potTypes.find((p) => p.id === pe.pot_type_id);
-            const parts = [`${pt?.name ?? '—'}×${pe.quantity}`];
-            if (pe.empty_pots > 0) parts.push(`${pe.empty_pots} vides`);
-            if (pe.empty_lids > 0) parts.push(`${pe.empty_lids} couvercles`);
-            return parts.join(' + ');
-          }).join(', ')
-        : 'aucun pot';
-
-      await supabase.from('delivery_events').insert({
-        event_type: 'lot_cree',
-        batch_id: data.id,
-        driver_id: form.driver_id,
-        description: `Tournée ${batchCode} créée (${BATCH_TYPE_LABELS[form.batch_type]}) — ${form.sales_point_ids.length} PDV · ${potSummary}`,
-      });
-
-      const { error: approvalError } = await supabase.from('delivery_batch_approvals').insert({
-        batch_id: data.id,
-        requested_by: profile?.id,
-      });
-      if (approvalError) {
-        setActionError('Le lot est opérationnel, mais la demande de validation n’a pas pu être créée. Réessayez après connexion.');
-      } else {
-        const { data: approvers } = await supabase
-          .from('profiles')
-          .select('id')
-          .in('role', [4, 5, 6])
-          .eq('is_active', true);
-        await Promise.all((approvers ?? []).map((approver) =>
-          createNotification(approver.id, 'Validation de lot requise', `Le lot ${batchCode} a été créé et est déjà opérationnel. Validation à effectuer.`, 'warning', 'batches')
-        ));
-      }
+    if (error || !data) {
+      setActionError(error?.message ?? 'La tournée n’a pas pu être créée.');
+      return;
     }
+
+    const createdBatch = data as DeliveryBatch;
+    const driver = drivers.find((item) => item.id === form.driver_id);
+    setBatches((current) => [{
+      ...createdBatch,
+      driver,
+      deposits: [],
+      sales_points: form.sales_point_ids.map((salesPointId) => ({
+        id: `pending-${salesPointId}`,
+        batch_id: createdBatch.id,
+        sales_point_id: salesPointId,
+        created_at: createdBatch.created_at,
+        sales_point: salesPoints.find((item) => item.id === salesPointId),
+      })),
+      batch_pot_types: needsPots ? form.pot_entries.map((entry) => ({
+        id: `pending-${entry.pot_type_id}`,
+        batch_id: createdBatch.id,
+        pot_type_id: entry.pot_type_id,
+        quantity: entry.quantity,
+        empty_pots: entry.empty_pots ?? 0,
+        empty_lids: entry.empty_lids ?? 0,
+        created_at: createdBatch.created_at,
+        pot_type: potTypes.find((item) => item.id === entry.pot_type_id),
+      })) : [],
+    }, ...current.filter((batch) => batch.id !== createdBatch.id)]);
 
     setShowModal(false);
     setForm({ driver_id: '', zone: '', batch_type: 'livraison', sales_point_ids: [], pot_entries: [] });
     setActionError(null);
-    loadAll();
   };
 
   const decideBatchApproval = async (batch: DeliveryBatch, decision: 'approuve' | 'rejete') => {
