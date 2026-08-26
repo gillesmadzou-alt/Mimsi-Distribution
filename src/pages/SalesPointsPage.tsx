@@ -17,6 +17,7 @@ import {
 import GeoPickerModal from '@/components/GeoPickerModal';
 
 const DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+const UNASSIGNED_DRIVER_FILTER = '__unassigned__';
 
 const QUOTA_STATUS_CONFIG: Record<string, { label: string; style: string; Icon: typeof Clock }> = {
   non_paye: { label: 'Non payé',   style: 'bg-red-50 text-red-700',       Icon: AlertCircle },
@@ -55,6 +56,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
   const [filterNew, setFilterNew] = useState('');
   const [filterZone, setFilterZone] = useState('');
   const [filterArrond, setFilterArrond] = useState('');
+  const [filterDriver, setFilterDriver] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [showGeoPicker, setShowGeoPicker] = useState(false);
   const [editing, setEditing] = useState<SalesPoint | null>(null);
@@ -135,12 +137,15 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
     const matchStatus = !filterStatus || p.quota_status === filterStatus;
     const matchNew = !filterNew || (filterNew === 'new' ? p.is_new : !p.is_new);
     const matchZone = !filterZone || p.zone === filterZone;
+    const matchDriver = !filterDriver
+      || (filterDriver === UNASSIGNED_DRIVER_FILTER ? !p.driver_id : p.driver_id === filterDriver);
     const pointArrondissements = [p.arrondissement, ...(p.arrondissements ?? [])];
     const matchArrond = !filterArrond || pointArrondissements.some((arrondissement) => sameArrondissement(arrondissement, filterArrond));
-    return matchSearch && matchStatus && matchNew && matchZone && matchArrond;
+    return matchSearch && matchStatus && matchNew && matchZone && matchArrond && matchDriver;
   });
 
   const zones = useMemo(() => Array.from(new Set(points.map((p) => p.zone).filter(Boolean))).sort(), [points]);
+  const driverNameById = useMemo(() => new Map(drivers.map((driver) => [driver.id, driver.full_name])), [drivers]);
   const arrondissements = useMemo(
     () => getBrazzavilleArrondissementOptions(points.flatMap((p) => [p.arrondissement, ...(p.arrondissements ?? [])])),
     [points],
@@ -428,6 +433,12 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
             <option value="">Tous arrond.</option>
             {arrondissements.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
+          <select value={filterDriver} onChange={(e) => setFilterDriver(e.target.value)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium border outline-none transition-all ${filterDriver ? 'bg-violet-500 text-white border-violet-500' : 'bg-white border-gray-200 text-gray-600'}`}>
+            <option value="">Tous les commerciaux</option>
+            <option value={UNASSIGNED_DRIVER_FILTER}>Sans commercial</option>
+            {drivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.full_name}</option>)}
+          </select>
           <div className="w-px bg-gray-200 mx-1" />
           <button onClick={() => setFilterNew('')}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${!filterNew ? 'bg-gray-700 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>
@@ -552,6 +563,12 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
                   {(point.owner_full_name ?? point.owner_name) && (
                     <div className="flex items-center gap-2"><UserIcon className="w-4 h-4 text-gray-400" /> {point.owner_full_name ?? point.owner_name}</div>
                   )}
+                  <div className="flex items-center gap-2">
+                    <UserIcon className="w-4 h-4 text-gray-400" />
+                    <span className={point.driver_id ? '' : 'text-amber-600 italic'}>
+                      Commercial : {point.driver_id ? (driverNameById.get(point.driver_id) ?? 'Commercial inconnu') : 'Sans commercial'}
+                    </span>
+                  </div>
                   {point.owner_phone && <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-gray-400" /> {point.owner_phone}</div>}
                   {point.owner_phone_secondary && <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-gray-400" /> {point.owner_phone_secondary}</div>}
                   {point.owner_email && <div className="flex items-center gap-2"><Mail className="w-4 h-4 text-gray-400" /> {point.owner_email}</div>}
