@@ -3,6 +3,7 @@ import { supabase, formatFCFA, Driver, DeliveryBatch, PotType, Baker, Kneader, P
 import { useAuth } from '@/contexts/AuthContext';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { includePendingDashboardOperations } from '@/lib/pendingDashboard';
+import { getCachedPageData } from '@/lib/readCache';
 import {
   Package, Users, Route, TrendingUp, AlertTriangle,
   Truck, Clock, CheckCircle2, Undo2, Store, Wallet, Filter, X,
@@ -49,11 +50,25 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
   const [selectedKneader, setSelectedKneader] = useState<string>('all');
   const [periodRange, setPeriodRange] = useState<PeriodRange | null>(null);
   const [selectedBatchId, setSelectedBatchId] = useState<string>('');
+  const rawRef = useRef<RawData | null>(null);
+  const loadInProgressRef = useRef(false);
 
   const loadAll = useCallback(async () => {
-    setLoading(true);
+    if (loadInProgressRef.current) return;
+    loadInProgressRef.current = true;
     setLoadError(null);
     const cacheKey = profile?.role === 1 ? `dashboard_${profile?.id}` : 'dashboard';
+    if (!rawRef.current) {
+      const cached = await getCachedPageData<RawData>(cacheKey);
+      if (cached?.data) {
+        rawRef.current = cached.data;
+        setRaw(cached.data);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
+    }
+
     let result = await fetchWithCache<RawData>(cacheKey, async () => {
       const isDriver = profile?.role === 1;
       let driverId: string | null = null;
@@ -138,12 +153,14 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
       const data = (isOffline || !navigator.onLine)
         ? await includePendingDashboardOperations(result.data)
         : result.data;
+      rawRef.current = data;
       setRaw(data);
     } else {
       setLoadError(result.error ?? 'Erreur lors du chargement des donnees.');
     }
     setLoading(false);
-  }, [profile?.role, profile?.id, fetchWithCache, isOffline]);
+    loadInProgressRef.current = false;
+  }, [profile, fetchWithCache, isOffline]);
 
   useEffect(() => {
     loadAll();
@@ -158,22 +175,30 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
   // Realtime subscriptions: auto-refresh when any relevant table changes (online only)
   useEffect(() => {
     if (isOffline) return;
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(loadAll, 600);
+    };
     const channel = supabase
       .channel('dashboard_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_batches' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'deposits' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'returns' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'receivables' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'receivable_payments' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_expenses' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_movements' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pot_types' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_points' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_records' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'dough_deliveries' }, loadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_batches' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'deposits' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'returns' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'receivables' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'receivable_payments' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'delivery_expenses' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_movements' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pot_types' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_points' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'production_records' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dough_deliveries' }, scheduleRefresh)
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      supabase.removeChannel(channel);
+    };
   }, [loadAll, isOffline]);
 
   const period = useMemo(() => {
