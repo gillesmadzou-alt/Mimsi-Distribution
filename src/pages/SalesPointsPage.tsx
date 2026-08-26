@@ -81,9 +81,9 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
 
   // La gestion du réseau de points de vente fait partie du périmètre de la
   // gestion de stock. Le rôle 16 est l'assistant et bénéficie du même accès
-  // opérationnel que le rôle 2, sans obtenir les droits de suppression.
+  // opérationnel que le rôle 2, y compris la suppression protégée des points.
   const canEdit = [1, 2, 4, 5, 6, 7, 16].includes(profile?.role ?? 1);
-  const canDelete = [1, 4, 5, 6, 7].includes(profile?.role ?? 1);
+  const canDelete = [2, 4, 5, 6, 7, 16].includes(profile?.role ?? 1);
   const canAddPayment = (profile?.role ?? 1) >= 1;
 
   const { fetchWithCache, isOffline } = useOfflineFetch();
@@ -208,6 +208,9 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
     e.preventDefault();
     const userId = profile?.id;
     const pointId = editing?.id ?? crypto.randomUUID();
+    const quotaAmount = Math.max(0, Number(form.quota_amount) || 0);
+    const quotaPaid = editing?.quota_paid ?? 0;
+    const quotaStatus = quotaPaid >= quotaAmount ? 'paye' : quotaPaid > 0 ? 'partiel' : 'non_paye';
     const payload = {
       ...(editing ? {} : { id: pointId }),
       name: form.name,
@@ -226,7 +229,8 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
       gps_lng: form.gps_lng ? Number(form.gps_lng) : null,
       is_active: form.is_active,
       is_new: form.is_new,
-      quota_amount: Number(form.quota_amount) || 4000,
+      quota_amount: quotaAmount,
+      quota_status: quotaStatus,
       driver_id: form.driver_id || null,
       ...(userId ? { created_by: userId } : {}),
     };
@@ -256,9 +260,9 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
       photo_url: null,
       is_active: form.is_active,
       is_new: form.is_new,
-      quota_amount: Number(form.quota_amount) || 4000,
-      quota_paid: editing?.quota_paid ?? 0,
-      quota_status: editing?.quota_status ?? 'non_paye',
+      quota_amount: quotaAmount,
+      quota_paid: quotaPaid,
+      quota_status: quotaStatus,
       gps_lat: form.gps_lat ? Number(form.gps_lat) : null,
       gps_lng: form.gps_lng ? Number(form.gps_lng) : null,
       created_by: userId ?? null,
@@ -825,7 +829,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
                   <label className="block text-sm font-medium text-gray-700 mb-1">Type de point</label>
                   <select value={form.is_new ? 'new' : 'old'} onChange={(e) => {
                     const isNew = e.target.value === 'new';
-                    setForm({ ...form, is_new: isNew, quota_amount: isNew ? (form.quota_amount === '0' ? '4000' : form.quota_amount) : '0' });
+                    setForm({ ...form, is_new: isNew, quota_amount: isNew ? form.quota_amount : '0' });
                   }}
                     className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none">
                     <option value="new">Nouveau</option>
@@ -834,12 +838,13 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Montant cotisation (FCFA)</label>
-                  <input type="number" value={form.quota_amount} 
+                  <input type="number" min="0" value={form.quota_amount}
                     disabled={!form.is_new}
                     onChange={(e) => setForm({ ...form, quota_amount: e.target.value })}
-                    placeholder={form.is_new ? '4000' : 'Exempté (ancien point)'}
+                    placeholder={form.is_new ? '0 ou montant à payer' : 'Exempté (ancien point)'}
                     className={`w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none ${!form.is_new ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''}`} />
                   {!form.is_new && <p className="text-xs text-gray-400 mt-1">Les anciens points sont exemptés de cotisation</p>}
+                  {form.is_new && Number(form.quota_amount) === 0 && <p className="text-xs text-emerald-600 mt-1">Aucune cotisation ne sera due pour ce nouveau point</p>}
                 </div>
               </div>
               <div>
