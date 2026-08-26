@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { supabase, AppNotification } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useConfirm } from '@/contexts/ConfirmContext';
+import { useToast } from '@/contexts/ToastContext';
 import { Bell, Info, AlertTriangle, AlertCircle, CheckCircle2, ArrowUpCircle, ArrowDownCircle, MinusCircle, Archive } from 'lucide-react';
 import { PageId } from '@/components/AppShell';
 
@@ -34,9 +36,12 @@ type PriorityFilter = 'all' | AppNotification['priority'];
 
 export default function NotificationBell({ onNavigate }: { onNavigate: (page: PageId) => void }) {
   const { profile } = useAuth();
+  const { confirmDialog } = useConfirm();
+  const { toast } = useToast();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [open, setOpen] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
+  const [archivingAll, setArchivingAll] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -98,6 +103,34 @@ export default function NotificationBell({ onNavigate }: { onNavigate: (page: Pa
     loadNotifications();
   };
 
+  const archiveAllNotifications = async () => {
+    if (!profile || notifications.length === 0 || archivingAll) return;
+    const confirmed = await confirmDialog({
+      title: 'Archiver toutes les notifications',
+      message: `Les ${notifications.length} notifications actives seront déplacées vers les archives. Vous pourrez les restaurer depuis la page Archives.`,
+      confirmLabel: 'Tout archiver',
+      cancelLabel: 'Annuler',
+    });
+    if (!confirmed) return;
+
+    setArchivingAll(true);
+    const archivedAt = new Date().toISOString();
+    const { error } = await supabase
+      .from('app_notifications')
+      .update({ archived_at: archivedAt, is_read: true })
+      .eq('user_id', profile.id)
+      .is('archived_at', null);
+
+    if (error) {
+      toast('Impossible d’archiver toutes les notifications.', 'error');
+    } else {
+      setNotifications([]);
+      setPriorityFilter('all');
+      toast('Toutes les notifications ont été archivées.', 'success');
+    }
+    setArchivingAll(false);
+  };
+
   const handleClick = (n: AppNotification) => {
     markRead(n.id);
     if (n.link_page) {
@@ -136,6 +169,16 @@ export default function NotificationBell({ onNavigate }: { onNavigate: (page: Pa
               >
                 Archives
               </button>
+              {notifications.length > 0 && (
+                <button
+                  type="button"
+                  onClick={archiveAllNotifications}
+                  disabled={archivingAll}
+                  className="text-xs text-gray-500 hover:text-amber-700 font-medium disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {archivingAll ? 'Archivage…' : 'Tout archiver'}
+                </button>
+              )}
               {unreadCount > 0 && (
                 <button onClick={markAllRead} className="text-xs text-amber-600 hover:text-amber-700 font-medium">
                   Tout marquer lu
