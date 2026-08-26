@@ -29,6 +29,8 @@ const PAYMENT_METHODS: Record<string, string> = {
   autre: 'Autre',
 };
 
+const UNASSIGNED_DRIVER_FILTER = '__unassigned__';
+
 export default function ContributionsPage() {
   const [points, setPoints] = useState<ContributionPoint[]>([]);
   const [payments, setPayments] = useState<PaymentWithCollector[]>([]);
@@ -97,7 +99,7 @@ export default function ContributionsPage() {
         .some((value) => value?.toLocaleLowerCase('fr').includes(query));
       return matchesSearch
         && (!status || point.quota_status === status)
-        && (!driverId || point.driver?.id === driverId)
+        && (!driverId || (driverId === UNASSIGNED_DRIVER_FILTER ? !point.driver?.id : point.driver?.id === driverId))
         && (!zone || point.zone === zone)
         && (!dateFrom || lastPayment >= dateFrom)
         && (!dateTo || lastPayment <= dateTo);
@@ -188,7 +190,9 @@ export default function ContributionsPage() {
             <option value="">Tous les statuts</option><option value="non_paye">Non payées</option><option value="partiel">Partielles</option><option value="paye">Payées</option>
           </select>
           <select value={driverId} onChange={(event) => setDriverId(event.target.value)} className="px-3 py-2 rounded-xl border border-gray-200 text-sm">
-            <option value="">Tous les commerciaux</option>{drivers.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+            <option value="">Tous les commerciaux</option>
+            <option value={UNASSIGNED_DRIVER_FILTER}>Sans commercial</option>
+            {drivers.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
           </select>
           <select value={zone} onChange={(event) => setZone(event.target.value)} className="px-3 py-2 rounded-xl border border-gray-200 text-sm">
             <option value="">Toutes les zones</option>{zones.map((item) => <option key={item} value={item}>{item}</option>)}
