@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase, Profile, ROLE_LABELS, UserRole } from '@/lib/supabase';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
-import { UserPlus, Users, Loader2, Trash2, ShieldCheck, Search, Mail, Lock, User as UserIcon, X, CloudOff } from 'lucide-react';
+import { UserPlus, Loader2, Trash2, ShieldCheck, Search, Mail, Lock, User as UserIcon, X, CloudOff } from 'lucide-react';
 
 const EMAIL_DOMAIN = 'mimsidistribution.com';
 
@@ -82,7 +82,9 @@ export default function UsersPage() {
         }
       );
 
-      const result = await response.json();
+      const result = await response.json().catch(() => ({
+        error: `La fonction de création a renvoyé une réponse invalide (${response.status}).`,
+      }));
       if (!response.ok) {
         setError(result.error || 'Erreur lors de la création du compte.');
       } else {
@@ -91,8 +93,9 @@ export default function UsersPage() {
         setShowForm(false);
         fetchProfiles();
       }
-    } catch {
-      setError('Erreur réseau lors de la création du compte.');
+    } catch (requestError) {
+      console.error('create-user request failed:', requestError);
+      setError('La fonction de création est inaccessible. Vérifiez la connexion et son déploiement Supabase.');
     }
     setCreating(false);
   };
