@@ -711,7 +711,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
 
       {/* Quota summary - only for driver/all view */}
       {stats.showDriverStats && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 cursor-pointer hover:shadow-md transition-shadow" onClick={() => onNavigate?.('sales-points')}>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 cursor-pointer hover:shadow-md transition-shadow" onClick={() => onNavigate?.('contributions')}>
           <div className="flex items-center gap-3 mb-4">
             <Wallet className="w-5 h-5 text-teal-600" />
             <h3 className="font-semibold text-gray-900">Suivi des cotisations</h3>
