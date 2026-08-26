@@ -77,6 +77,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
   const [paymentForm, setPaymentForm] = useState({ amount: '', payment_method: 'especes', receipt_number: '', notes: '' });
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [deletingPointId, setDeletingPointId] = useState<string | null>(null);
 
   // La gestion du réseau de points de vente fait partie du périmètre de la
   // gestion de stock. Le rôle 16 est l'assistant et bénéficie du même accès
@@ -309,12 +310,35 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
     loadPoints();
   };
 
-  const handleDelete = async (id: string) => {
-    if (!(await confirmDialog({ message: 'Supprimer ce point de vente ?', confirmLabel: 'Supprimer', danger: true }))) return;
-    const { error } = await supabase.from('sales_points').delete().eq('id', id);
-    if (error) { toast('Erreur lors de la suppression.', 'error'); return; }
+  const handleDelete = async (point: SalesPoint) => {
+    if (isOffline || !navigator.onLine) {
+      toast('La suppression d’un point de vente nécessite une connexion Internet.', 'error');
+      return;
+    }
+    if (!(await confirmDialog({
+      message: `Supprimer définitivement le point de vente « ${point.name} » ? Cette action est irréversible.`,
+      confirmLabel: 'Supprimer définitivement',
+      danger: true,
+    }))) return;
+
+    setDeletingPointId(point.id);
+    const { error } = await supabase.from('sales_points').delete().eq('id', point.id);
+    if (error) {
+      setDeletingPointId(null);
+      if (error.code === '23503') {
+        toast('Ce point possède déjà un historique de livraisons ou de retours. Désactivez-le au lieu de le supprimer.', 'error');
+      } else {
+        toast('Impossible de supprimer ce point de vente.', 'error');
+      }
+      return;
+    }
+
+    const updatedPoints = points.filter((item) => item.id !== point.id);
+    setPoints(updatedPoints);
+    await cachePageData('sales_points_page', updatedPoints);
     await refreshPointOfSaleSnapshots();
-    loadPoints();
+    setDeletingPointId(null);
+    toast('Point de vente supprimé.', 'success');
   };
 
   const openQuota = async (point: SalesPoint) => {
@@ -526,8 +550,14 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
                         <Edit2 className="w-4 h-4" />
                       </button>
                       {canDelete && (
-                        <button onClick={() => handleDelete(point.id)} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                        <button
+                          onClick={() => handleDelete(point)}
+                          disabled={deletingPointId === point.id}
+                          aria-label={`Supprimer le point de vente ${point.name}`}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 disabled:opacity-50 disabled:cursor-wait transition-colors"
+                        >
                           <Trash2 className="w-4 h-4" />
+                          {deletingPointId === point.id ? 'Suppression…' : 'Supprimer'}
                         </button>
                       )}
                     </div>
