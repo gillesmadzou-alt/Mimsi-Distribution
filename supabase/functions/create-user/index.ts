@@ -1,13 +1,36 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-const ALLOWED_ORIGIN = Deno.env.get("APP_ORIGIN") ?? "https://ogghcosnzksbkzosyytu.supabase.co";
+const DEFAULT_ALLOWED_ORIGINS = [
+  "https://mimsi-distribution-ennx.vercel.app",
+  "https://mimsi-distribution.vercel.app",
+  "http://localhost:5173",
+];
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-};
+const configuredOrigins = (Deno.env.get("APP_ORIGINS") ?? Deno.env.get("APP_ORIGIN") ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedOrigins = new Set([...DEFAULT_ALLOWED_ORIGINS, ...configuredOrigins]);
+
+function corsHeaders(req: Request) {
+  const requestOrigin = req.headers.get("Origin");
+  return {
+    "Access-Control-Allow-Origin": requestOrigin && allowedOrigins.has(requestOrigin)
+      ? requestOrigin
+      : DEFAULT_ALLOWED_ORIGINS[0],
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+    "Vary": "Origin",
+  };
+}
+
+function jsonResponse(req: Request, body: Record<string, unknown>, status: number) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders(req), "Content-Type": "application/json" },
+  });
+}
 
 function emailFromFullName(fullName: string): string {
   const normalized = fullName.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -16,8 +39,17 @@ function emailFromFullName(fullName: string): string {
 }
 
 Deno.serve(async (req: Request) => {
+  const requestOrigin = req.headers.get("Origin");
+  if (requestOrigin && !allowedOrigins.has(requestOrigin)) {
+    return jsonResponse(req, { error: "Origine non autorisée" }, 403);
+  }
+
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 200, headers: corsHeaders });
+    return new Response(null, { status: 204, headers: corsHeaders(req) });
+  }
+
+  if (req.method !== "POST") {
+    return jsonResponse(req, { error: "Méthode non autorisée" }, 405);
   }
 
   try {
@@ -29,9 +61,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Non authentifié" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(req, { error: "Session expirée, veuillez vous reconnecter." }, 401);
     }
 
     const callerClient = createClient(
@@ -45,30 +75,22 @@ Deno.serve(async (req: Request) => {
       .eq("id", user.id)
       .maybeSingle();
 
-    if (profileErr || !callerProfile || callerProfile.role < 6) {
-      return new Response(JSON.stringify({ error: "Accès refusé — administrateur uniquement" }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (profileErr || !callerProfile || callerProfile.role !== 6) {
+      return jsonResponse(req, { error: "Accès refusé — administrateur uniquement" }, 403);
     }
 
     const { password, fullName, role } = await req.json();
     if (!password || !fullName || role === undefined) {
-      return new Response(JSON.stringify({ error: "Champs manquants" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(req, { error: "Nom, mot de passe et rôle sont obligatoires." }, 400);
     }
 
-    const allowedRoles = [1, 2, 3, 4, 5, 9, 10, 12, 13, 14, 16];
+    const allowedRoles = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16];
     if (!allowedRoles.includes(role)) {
-      return new Response(JSON.stringify({ error: "Rôle non autorisé" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(req, { error: "Rôle non autorisé" }, 400);
     }
     const email = emailFromFullName(fullName);
     if (email === '@mimsidistribution.com') {
-      return new Response(JSON.stringify({ error: "Le nom complet est invalide." }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(req, { error: "Le nom complet est invalide." }, 400);
     }
 
     const serviceClient = createClient(
@@ -84,9 +106,13 @@ Deno.serve(async (req: Request) => {
 
     if (createError) {
       console.error("createUser error:", createError.message);
-      return new Response(JSON.stringify({ error: "Impossible de créer le compte utilisateur." }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const duplicate = createError.message.toLowerCase().includes("already")
+        || createError.message.toLowerCase().includes("exists");
+      return jsonResponse(req, {
+        error: duplicate
+          ? `Un compte existe déjà avec l’identifiant ${email}.`
+          : "Impossible de créer le compte utilisateur.",
+      }, 400);
     }
 
     const { error: profileInsertError } = await serviceClient.from("profiles").insert({
@@ -99,17 +125,12 @@ Deno.serve(async (req: Request) => {
     if (profileInsertError) {
       await serviceClient.auth.admin.deleteUser(newUser.user.id);
       console.error("profile insert error:", profileInsertError.message);
-      return new Response(JSON.stringify({ error: "Impossible de créer le profil. Réessayez." }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse(req, { error: "Impossible de créer le profil. Réessayez." }, 400);
     }
 
-    return new Response(JSON.stringify({ success: true, userId: newUser.user.id, email }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return jsonResponse(req, { success: true, userId: newUser.user.id, email }, 200);
   } catch (err) {
-    return new Response(JSON.stringify({ error: "Erreur serveur" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error("create-user unexpected error:", err);
+    return jsonResponse(req, { error: "Erreur serveur lors de la création du compte." }, 500);
   }
 });
