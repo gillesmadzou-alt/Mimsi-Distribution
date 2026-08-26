@@ -9,7 +9,7 @@ import {
   RefreshCw, CalendarOff, Trophy, History, ChefHat, CalendarDays, FlaskConical, FileText, BookOpen,
   Activity, Sparkles,
   Bell, Map, Network, Barcode, UserCog, Menu, X, WifiOff, Wifi, CloudOff,
-  ClipboardList, Receipt, UserCheck, DownloadCloud, DatabaseBackup, Loader2, CheckCircle2,
+  ClipboardList, Receipt, UserCheck, DownloadCloud, DatabaseBackup, Loader2, CheckCircle2, PiggyBank,
   Camera, KeyRound,
 } from 'lucide-react';
 import NotificationBell from '@/components/NotificationBell';
@@ -25,7 +25,7 @@ import { useConfirm } from '@/contexts/ConfirmContext';
 export type PageId =
   | 'dashboard' | 'drivers' | 'sales-points' | 'stock' | 'batches' | 'returns'
   | 'statistics' | 'journal' | 'analytics' | 'opportunistic'
-  | 'receivables' | 'compliance'
+  | 'receivables' | 'contributions' | 'compliance'
   | 'consignments' | 'restock' | 'leave'
   | 'leaderboard' | 'audit' | 'production' | 'map' | 'org-chart'
   | 'barcodes' | 'users' | 'approvals' | 'scheduling' | 'ingredients' | 'reports'
@@ -70,6 +70,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'Finance',
     items: [
       { id: 'receivables', label: 'Créances', description: 'Montants dus par les points de vente et paiements reçus', icon: Wallet, minRole: 3 },
+      { id: 'contributions', label: 'Cotisations', description: 'Suivi détaillé des cotisations et de leur historique', icon: PiggyBank, minRole: 2 },
       { id: 'expenses', label: 'Dépenses livraison', description: 'Toutes les dépenses de tournée (carburant, papiers, crédits, etc.)', icon: Receipt, minRole: 1 },
       { id: 'compliance', label: 'Conformité', description: 'Contrôles qualité et écarts constatés sur le terrain', icon: ShieldCheck, minRole: 3 },
     ],

@@ -18,6 +18,7 @@ import ReturnsPage from '@/pages/ReturnsPage';
 import StatisticsPage from '@/pages/StatisticsPage';
 import JournalPage from '@/pages/JournalPage';
 import ReceivablesPage from '@/pages/ReceivablesPage';
+import ContributionsPage from '@/pages/ContributionsPage';
 import CompliancePage from '@/pages/CompliancePage';
 import ConsignmentsPage from '@/pages/ConsignmentsPage';
 import RestockPage from '@/pages/RestockPage';
@@ -85,6 +86,7 @@ function OfficeApp() {
     statistics: <StatisticsPage onNavigate={nav} />,
     journal: <JournalPage onNavigate={nav} />,
     receivables: <ReceivablesPage onNavigate={nav} />,
+    contributions: <ContributionsPage />,
     compliance: <CompliancePage onNavigate={nav} />,
     consignments: <ConsignmentsPage onNavigate={nav} />,
     restock: <RestockPage onNavigate={nav} />,
