@@ -1,9 +1,9 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { supabase, AppNotification } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useToast } from '@/contexts/ToastContext';
-import { Bell, Info, AlertTriangle, AlertCircle, CheckCircle2, ArrowUpCircle, ArrowDownCircle, MinusCircle, Archive } from 'lucide-react';
+import { Bell, Info, AlertTriangle, AlertCircle, CheckCircle2, CheckCheck, ArrowUpCircle, ArrowDownCircle, MinusCircle, Archive } from 'lucide-react';
 import { PageId } from '@/components/AppShell';
 
 const TYPE_ICONS = {
@@ -42,24 +42,10 @@ export default function NotificationBell({ onNavigate }: { onNavigate: (page: Pa
   const [open, setOpen] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
   const [archivingAll, setArchivingAll] = useState(false);
+  const [markingAllRead, setMarkingAllRead] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!profile) return;
-    loadNotifications();
-    const interval = setInterval(loadNotifications, 30000);
-    return () => clearInterval(interval);
-  }, [profile?.id]);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async () => {
     if (!profile) return;
     const { data } = await supabase
       .from('app_notifications')
@@ -69,7 +55,22 @@ export default function NotificationBell({ onNavigate }: { onNavigate: (page: Pa
       .order('created_at', { ascending: false })
       .limit(50);
     setNotifications(data ?? []);
-  };
+  }, [profile]);
+
+  useEffect(() => {
+    if (!profile) return;
+    loadNotifications();
+    const interval = setInterval(loadNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [profile, loadNotifications]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const sorted = useMemo(
     () => [...notifications].sort((a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]),
@@ -92,9 +93,21 @@ export default function NotificationBell({ onNavigate }: { onNavigate: (page: Pa
   };
 
   const markAllRead = async () => {
-    if (!profile) return;
-    await supabase.from('app_notifications').update({ is_read: true }).eq('user_id', profile.id).eq('is_read', false);
-    loadNotifications();
+    if (!profile || unreadCount === 0 || markingAllRead) return;
+    setMarkingAllRead(true);
+    const { error } = await supabase
+      .from('app_notifications')
+      .update({ is_read: true })
+      .eq('user_id', profile.id)
+      .eq('is_read', false)
+      .is('archived_at', null);
+    if (error) {
+      toast('Impossible de marquer toutes les notifications comme lues.', 'error');
+    } else {
+      setNotifications((items) => items.map((item) => ({ ...item, is_read: true })));
+      toast('Toutes les notifications ont été marquées comme lues.', 'success');
+    }
+    setMarkingAllRead(false);
   };
 
   const archiveNotification = async (event: React.MouseEvent, id: string) => {
@@ -160,30 +173,35 @@ export default function NotificationBell({ onNavigate }: { onNavigate: (page: Pa
           aria-label="Notifications"
           className="fixed inset-x-3 top-16 bottom-3 z-50 flex w-auto flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-xl sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:mt-2 sm:w-96 sm:max-h-[32rem]"
         >
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-3 border-b border-gray-100 bg-white">
-            <h3 className="font-semibold text-gray-900 text-sm">Notifications</h3>
-            <div className="flex items-center gap-3 whitespace-nowrap">
+          <div className="shrink-0 space-y-2 px-4 py-3 border-b border-gray-100 bg-white">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-semibold text-gray-900 text-sm">Notifications</h3>
               <button
                 onClick={() => { onNavigate('notification-archive'); setOpen(false); }}
                 className="text-xs text-gray-500 hover:text-amber-700 font-medium"
               >
-                Archives
+                Voir les archives
               </button>
-              {notifications.length > 0 && (
-                <button
-                  type="button"
-                  onClick={archiveAllNotifications}
-                  disabled={archivingAll}
-                  className="text-xs text-gray-500 hover:text-amber-700 font-medium disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {archivingAll ? 'Archivage…' : 'Tout archiver'}
-                </button>
-              )}
-              {unreadCount > 0 && (
-                <button onClick={markAllRead} className="text-xs text-amber-600 hover:text-amber-700 font-medium">
-                  Tout marquer lu
-                </button>
-              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={markAllRead}
+                disabled={unreadCount === 0 || markingAllRead}
+                className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <CheckCheck className="w-4 h-4" />
+                {markingAllRead ? 'Traitement…' : 'Tout marquer comme lu'}
+              </button>
+              <button
+                type="button"
+                onClick={archiveAllNotifications}
+                disabled={notifications.length === 0 || archivingAll}
+                className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <Archive className="w-4 h-4" />
+                {archivingAll ? 'Archivage…' : 'Tout archiver'}
+              </button>
             </div>
           </div>
 
