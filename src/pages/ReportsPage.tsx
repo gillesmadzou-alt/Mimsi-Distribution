@@ -4,7 +4,7 @@ import {
   supabase, ROLE_LABELS, formatFCFA, UserRole, Profile,
   Driver, SalesPoint, DeliveryBatch, Deposit, Return, ProductionRecord,
   Receivable, StockMovement, Ingredient, DoughBatch, Kneader, Baker,
-  AttendanceRecord,
+  AttendanceRecord, QuotaPayment,
 } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useAuth } from '@/contexts/AuthContext';
@@ -160,6 +160,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
   const [doughBatches, setDoughBatches] = useState<DoughBatch[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [salesPoints, setSalesPoints] = useState<SalesPoint[]>([]);
+  const [quotaPayments, setQuotaPayments] = useState<QuotaPayment[]>([]);
   const [kneaders, setKneaders] = useState<Kneader[]>([]);
   const [bakers, setBakers] = useState<Baker[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -189,7 +190,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
   const loadData = useCallback(async () => {
     setLoading(true);
     const result = await fetchWithCache('reports-page', async () => {
-      const [b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att] = await Promise.all([
+      const [b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp] = await Promise.all([
         supabase.from('delivery_batches').select('*, driver:drivers(*), pot_type:pot_types(*)').order('batch_date', { ascending: false }).limit(500),
         supabase.from('deposits').select('*, sales_point:sales_points(*), batch:delivery_batches(*)').order('deposited_at', { ascending: false }).limit(500),
         supabase.from('returns').select('*, sales_point:sales_points(*), batch:delivery_batches(*)').order('returned_at', { ascending: false }).limit(500),
@@ -204,11 +205,12 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
         supabase.from('bakers').select('*').order('full_name'),
         supabase.from('profiles').select('*').order('full_name'),
         supabase.from('attendance_records').select('*').order('attendance_date', { ascending: false }).limit(2000),
+        supabase.from('quota_payments').select('*').order('payment_date', { ascending: false }).limit(2000),
       ]);
-      return { b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att };
+      return { b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp };
     });
     if (result.data) {
-      const { b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att } = result.data;
+      const { b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp } = result.data;
       setAttendanceRecords(att.data ?? []);
       setBatches(b.data ?? []);
       setDeposits(dep.data ?? []);
@@ -223,13 +225,14 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
       setKneaders(kn.data ?? []);
       setBakers(bk.data ?? []);
       setProfiles(pr.data ?? []);
+      setQuotaPayments(qp?.data ?? []);
     }
     setLoading(false);
   }, [fetchWithCache]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  useRealtimeSubscription('reports-page', isOffline ? [] : ['delivery_batches', 'deposits', 'returns', 'receivables', 'production_records', 'stock_movements', 'ingredients', 'dough_batches'], () => { loadData(); });
+  useRealtimeSubscription('reports-page', isOffline ? [] : ['delivery_batches', 'deposits', 'returns', 'receivables', 'production_records', 'stock_movements', 'ingredients', 'dough_batches', 'sales_points', 'quota_payments'], () => { loadData(); });
 
   const inRange = (dateStr: string) => {
     const d = dateStr.slice(0, 10);
@@ -301,6 +304,76 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
             { label: 'Total dû', value: formatFCFA(totalDue) },
             { label: 'Total encaissé', value: formatFCFA(totalPaid) },
             { label: 'Reste à recouvrer', value: formatFCFA(outstanding) },
+            { label: 'Période', value: `${fmtDate(fromDate)} — ${fmtDate(toDate)}` },
+          ],
+        };
+      },
+    },
+    {
+      id: 'contributions',
+      title: 'Rapport des cotisations',
+      description: 'Cotisations dues, versements et restes par point de vente',
+      icon: Wallet,
+      roles: [2, 3, 4, 5, 6, 7, 16],
+      build: async () => {
+        const contributionPoints = salesPoints.filter((point) => point.is_new);
+        const periodPayments = quotaPayments.filter((payment) => inRange(payment.payment_date));
+        const paidInPeriodByPoint = new Map<string, number>();
+        const lastPaymentByPoint = new Map<string, string>();
+        periodPayments.forEach((payment) => {
+          paidInPeriodByPoint.set(
+            payment.sales_point_id,
+            (paidInPeriodByPoint.get(payment.sales_point_id) ?? 0) + payment.amount_fcfa,
+          );
+          const previous = lastPaymentByPoint.get(payment.sales_point_id);
+          if (!previous || payment.payment_date > previous) lastPaymentByPoint.set(payment.sales_point_id, payment.payment_date);
+        });
+
+        const totalDue = contributionPoints.reduce((sum, point) => sum + (point.quota_amount ?? 0), 0);
+        const totalPaid = contributionPoints.reduce((sum, point) => sum + (point.quota_paid ?? 0), 0);
+        const totalPaidInPeriod = periodPayments.reduce((sum, payment) => sum + payment.amount_fcfa, 0);
+        const totalRemaining = contributionPoints.reduce(
+          (sum, point) => sum + Math.max(0, (point.quota_amount ?? 0) - (point.quota_paid ?? 0)),
+          0,
+        );
+        const driverNameById = new Map(drivers.map((driver) => [driver.id, driver.full_name]));
+        const statusLabels: Record<string, string> = {
+          non_paye: 'Non payée',
+          partiel: 'Partielle',
+          paye: 'Payée',
+        };
+
+        return {
+          columns: [
+            { header: 'Point de vente', key: 'point' },
+            { header: 'Commercial', key: 'driver' },
+            { header: 'Zone', key: 'zone' },
+            { header: 'Montant dû', key: 'due', align: 'right' as const },
+            { header: 'Versé période', key: 'periodPaid', align: 'right' as const },
+            { header: 'Total versé', key: 'paid', align: 'right' as const },
+            { header: 'Reste', key: 'remaining', align: 'right' as const },
+            { header: 'Dernier versement', key: 'lastPayment', align: 'center' as const },
+            { header: 'Statut', key: 'status', align: 'center' as const },
+          ],
+          rows: contributionPoints.map((point) => ({
+            point: point.name,
+            driver: point.driver_id ? (driverNameById.get(point.driver_id) ?? 'Commercial inconnu') : 'Sans commercial',
+            zone: point.zone || '—',
+            due: formatFCFA(point.quota_amount ?? 0),
+            periodPaid: formatFCFA(paidInPeriodByPoint.get(point.id) ?? 0),
+            paid: formatFCFA(point.quota_paid ?? 0),
+            remaining: formatFCFA(Math.max(0, (point.quota_amount ?? 0) - (point.quota_paid ?? 0))),
+            lastPayment: lastPaymentByPoint.has(point.id) ? fmtDate(lastPaymentByPoint.get(point.id)!) : '—',
+            status: statusLabels[point.quota_status] ?? point.quota_status,
+          })),
+          summary: [
+            { label: 'Points concernés', value: String(contributionPoints.length) },
+            { label: 'Total dû', value: formatFCFA(totalDue) },
+            { label: 'Versements sur la période', value: formatFCFA(totalPaidInPeriod) },
+            { label: 'Total versé cumulé', value: formatFCFA(totalPaid) },
+            { label: 'Reste total', value: formatFCFA(totalRemaining) },
+            { label: 'Cotisations payées', value: String(contributionPoints.filter((point) => point.quota_status === 'paye').length) },
+            { label: 'Cotisations non soldées', value: String(contributionPoints.filter((point) => point.quota_status !== 'paye').length) },
             { label: 'Période', value: `${fmtDate(fromDate)} — ${fmtDate(toDate)}` },
           ],
         };

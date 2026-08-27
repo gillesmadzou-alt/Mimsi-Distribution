@@ -379,7 +379,7 @@ export async function precacheAllData(onProgress?: ProgressCallback, userProfile
     {
       key: 'reports-page',
       fn: async () => {
-        const [b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att] = await Promise.all([
+        const [b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp] = await Promise.all([
           supabase.from('delivery_batches').select('*, driver:drivers(*), pot_type:pot_types(*)').order('created_at', { ascending: false }),
           supabase.from('deposits').select('*, sales_point:sales_points(*), batch:delivery_batches(*)'),
           supabase.from('returns').select('*, sales_point:sales_points(*), batch:delivery_batches(*)'),
@@ -394,8 +394,9 @@ export async function precacheAllData(onProgress?: ProgressCallback, userProfile
           supabase.from('bakers').select('*').order('full_name'),
           supabase.from('profiles').select('*').order('full_name'),
           supabase.from('attendance_records').select('*').order('attendance_date', { ascending: false }).limit(2000),
+          supabase.from('quota_payments').select('*').order('payment_date', { ascending: false }).limit(2000),
         ]);
-        return { b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att };
+        return { b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp };
       },
     },
     {
