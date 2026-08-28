@@ -25,15 +25,46 @@ function drawBarcodeOnCanvas(canvas: HTMLCanvasElement, text: string): void {
   }
 }
 
-async function loadImageAsDataUrl(src: string): Promise<string> {
+async function loadLogoAsDataUrl(src: string): Promise<string> {
   const response = await fetch(src);
   if (!response.ok) throw new Error(`Impossible de charger le logo (${response.status}).`);
   const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+
   return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error ?? new Error('Lecture du logo impossible.'));
-    reader.readAsDataURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 900;
+      canvas.height = 600;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('Préparation du logo impossible.'));
+        return;
+      }
+
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(
+        image,
+        image.naturalWidth * 0.2,
+        image.naturalHeight * 0.27,
+        image.naturalWidth * 0.6,
+        image.naturalHeight * 0.4,
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
+      URL.revokeObjectURL(objectUrl);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Lecture du logo impossible.'));
+    };
+    image.src = objectUrl;
   });
 }
 
@@ -244,7 +275,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
     setPdfError(null);
 
     try {
-      const logoDataUrl = await loadImageAsDataUrl('/WhatsApp_Image_2026-07-31_at_19.28.27.jpeg');
+      const logoDataUrl = await loadLogoAsDataUrl('/WhatsApp_Image_2026-07-31_at_19.28.27.jpeg');
 
       const today = new Date().toISOString().slice(0, 10);
 
@@ -256,7 +287,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const margin = 10;
       const labelWidth = 85;
-      const labelHeight = 52;
+      const labelHeight = 60;
       const gapX = 5;
       const gapY = 5;
       const cols = 2;
@@ -290,15 +321,15 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
         doc.setLineWidth(0.35);
         doc.roundedRect(x, y, labelWidth, labelHeight, 2, 2, 'S');
 
-        const logoWidth = 11;
-        const logoHeight = 11;
-        doc.addImage(logoDataUrl, 'JPEG', x + 3, y + 3, logoWidth, logoHeight);
+        const logoWidth = 36;
+        const logoHeight = 20;
+        doc.addImage(logoDataUrl, 'PNG', x + (labelWidth - logoWidth) / 2, y + 1.5, logoWidth, logoHeight);
 
         const potName = (b.pot_type?.name ?? '—').toUpperCase();
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(45, 52, 54);
-        fitFontSize(doc, potName, labelWidth - 22, 12, 7);
-        doc.text(potName, x + 17, y + 9.5);
+        fitFontSize(doc, potName, labelWidth - 10, 15, 9);
+        doc.text(potName, x + labelWidth / 2, y + 24, { align: 'center' });
 
         const barcodeCanvas = document.createElement('canvas');
         JsBarcode(barcodeCanvas, b.code, {
@@ -311,21 +342,21 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
           lineColor: '#000000',
         });
         const barcodeData = barcodeCanvas.toDataURL('image/png');
-        doc.addImage(barcodeData, 'PNG', x + 5, y + 17, labelWidth - 10, 17);
+        doc.addImage(barcodeData, 'PNG', x + 5, y + 27, labelWidth - 10, 17);
 
         const bakerCodes = [b.baker_code, b.baker2_code].filter((code): code is string => Boolean(code));
         const bakerLabel = bakerCodes.join(' & ').toUpperCase();
         if (bakerLabel) {
           doc.setFont('helvetica', 'bold');
           doc.setTextColor(45, 52, 54);
-          fitFontSize(doc, bakerLabel, labelWidth - 10, 9, 6.5);
-          doc.text(bakerLabel, x + labelWidth / 2, y + 40, { align: 'center' });
+          fitFontSize(doc, bakerLabel, labelWidth - 10, 11, 7);
+          doc.text(bakerLabel, x + labelWidth / 2, y + 50, { align: 'center' });
         }
 
         doc.setFont('courier', 'normal');
         doc.setTextColor(45, 52, 54);
         fitFontSize(doc, b.code, labelWidth - 10, 8, 6);
-        doc.text(b.code, x + labelWidth / 2, y + 46, { align: 'center' });
+        doc.text(b.code, x + labelWidth / 2, y + 56, { align: 'center' });
 
         col++;
         if (col >= cols) { col = 0; row++; }
