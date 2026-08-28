@@ -3,7 +3,7 @@ import { supabase, PotType, Barcode as BarcodeType, Baker, ProductionRecord, for
 import { useAuth } from '@/contexts/AuthContext';
 import { jsPDF } from 'jspdf';
 import JsBarcode from 'jsbarcode';
-import { Barcode, Download, Printer, Plus, Trash2, Loader2, Package, CheckCircle2, RotateCcw, AlertTriangle, ArrowRight, WifiOff, CloudOff } from 'lucide-react';
+import { Barcode, Download, Plus, Trash2, Loader2, Package, CheckCircle2, RotateCcw, AlertTriangle, ArrowRight, WifiOff } from 'lucide-react';
 import { cacheBarcodes, getCachedBarcodes, addCachedBarcode, removeCachedBarcode, clearCachedBarcodes } from '@/lib/barcodeCache';
 import { getCachedPageData, cachePageData } from '@/lib/readCache';
 import { useSync } from '@/contexts/SyncContext';
@@ -25,6 +25,28 @@ function drawBarcodeOnCanvas(canvas: HTMLCanvasElement, text: string): void {
   }
 }
 
+async function loadImageAsDataUrl(src: string): Promise<string> {
+  const response = await fetch(src);
+  if (!response.ok) throw new Error(`Impossible de charger le logo (${response.status}).`);
+  const blob = await response.blob();
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error('Lecture du logo impossible.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function fitFontSize(doc: jsPDF, text: string, maxWidth: number, initialSize: number, minimumSize: number): number {
+  let size = initialSize;
+  doc.setFontSize(size);
+  while (size > minimumSize && doc.getTextWidth(text) > maxWidth) {
+    size -= 0.5;
+    doc.setFontSize(size);
+  }
+  return size;
+}
+
 function generateCode(index: number, baker1Code?: string, baker2Code?: string): string {
   const random = Math.random().toString(36).substring(2, 8).toUpperCase();
   const p1 = baker1Code ?? '';
@@ -34,11 +56,11 @@ function generateCode(index: number, baker1Code?: string, baker2Code?: string): 
 }
 
 function generateLotCode(record: ProductionRecord): string {
-  return `LOT-${record.production_date.replaceAll('-', '')}-${record.id.slice(0, 8).toUpperCase()}`;
+  return `LOT-${record.production_date.split('-').join('')}-${record.id.slice(0, 8).toUpperCase()}`;
 }
 
 export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: string) => void }) {
-  const { profile, offlineMode, manualOffline } = useAuth();
+  const { offlineMode, manualOffline } = useAuth();
   const { isOnline: online } = useSync();
   const isOffline = offlineMode || manualOffline || !navigator.onLine;
   const [potTypes, setPotTypes] = useState<PotType[]>([]);
@@ -46,6 +68,8 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
   const [productionRecords, setProductionRecords] = useState<ProductionRecord[]>([]);
   const [barcodes, setBarcodes] = useState<BarcodeType[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [form, setForm] = useState({ potTypeId: '', quantity: 1, notes: '', baker1Id: '', baker2Id: '', productionRecordId: '' });
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -212,86 +236,108 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
     setShowResetConfirm(false);
   };
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     const available = barcodes.filter((b) => !b.is_used);
     if (available.length === 0) return;
 
-    const today = new Date().toISOString().slice(0, 10);
+    setExportingPdf(true);
+    setPdfError(null);
 
-    const counterKey = `barcode_pdf_counter_${today}`;
-    const current = parseInt(localStorage.getItem(counterKey) ?? '0', 10) || 0;
-    const nextNum = current + 1;
-    localStorage.setItem(counterKey, String(nextNum));
+    try {
+      const logoDataUrl = await loadImageAsDataUrl('/WhatsApp_Image_2026-07-31_at_19.28.27.jpeg');
 
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const margin = 10;
-    const labelWidth = 85;
-    const labelHeight = 50;
-    const gapX = 5;
-    const gapY = 5;
-    const cols = 2;
-    const rowsPerPage = 5;
+      const today = new Date().toISOString().slice(0, 10);
 
-    let col = 0;
-    let row = 0;
-    let pageIndex = 0;
+      const counterKey = `barcode_pdf_counter_${today}`;
+      const current = parseInt(localStorage.getItem(counterKey) ?? '0', 10) || 0;
+      const nextNum = current + 1;
+      localStorage.setItem(counterKey, String(nextNum));
 
-    const drawPageHeader = (pg: number) => {
-      doc.setFontSize(10);
-      doc.setTextColor(120, 120, 120);
-      doc.text(`Étiquettes codes à barres — page ${pg + 1}`, margin, 7);
-    };
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const margin = 10;
+      const labelWidth = 85;
+      const labelHeight = 52;
+      const gapX = 5;
+      const gapY = 5;
+      const cols = 2;
+      const rowsPerPage = 4;
 
-    drawPageHeader(pageIndex);
+      let col = 0;
+      let row = 0;
+      let pageIndex = 0;
 
-    available.forEach((b) => {
-      if (row >= rowsPerPage) {
-        doc.addPage();
-        pageIndex++;
-        row = 0;
-        col = 0;
-        drawPageHeader(pageIndex);
-      }
+      const drawPageHeader = (pg: number) => {
+        doc.setFontSize(10);
+        doc.setTextColor(120, 120, 120);
+        doc.text(`Étiquettes codes à barres — page ${pg + 1}`, margin, 7);
+      };
 
-      const canvas = canvasRefs.current[b.id];
-      if (!canvas) return;
+      drawPageHeader(pageIndex);
 
-      const x = margin + col * (labelWidth + gapX);
-      const y = margin + 10 + row * (labelHeight + gapY);
+      available.forEach((b) => {
+        if (row >= rowsPerPage) {
+          doc.addPage();
+          pageIndex++;
+          row = 0;
+          col = 0;
+          drawPageHeader(pageIndex);
+        }
 
-      doc.setDrawColor(200, 200, 200);
-      doc.setLineWidth(0.2);
-      doc.roundedRect(x, y, labelWidth, labelHeight, 2, 2, 'S');
+        const x = margin + col * (labelWidth + gapX);
+        const y = margin + 10 + row * (labelHeight + gapY);
 
-      doc.setFontSize(8);
-      doc.setTextColor(60, 60, 60);
-      doc.text(b.pot_type?.name ?? '—', x + 3, y + 6);
+        doc.setDrawColor(245, 124, 22);
+        doc.setLineWidth(0.35);
+        doc.roundedRect(x, y, labelWidth, labelHeight, 2, 2, 'S');
 
-      if (b.baker_code) {
-        doc.setFontSize(7);
-        doc.setTextColor(180, 100, 20);
-        doc.text(b.baker_code, x + 3, y + 10);
-      }
-      if (b.baker2_code) {
-        doc.setFontSize(7);
-        doc.setTextColor(20, 130, 120);
-        doc.text(b.baker2_code, x + labelWidth - 3, y + 10, { align: 'right' });
-      }
+        const logoWidth = 11;
+        const logoHeight = 11;
+        doc.addImage(logoDataUrl, 'JPEG', x + 3, y + 3, logoWidth, logoHeight);
 
-      const imgData = canvas.toDataURL('image/png');
-      const imgWidth = labelWidth - 8;
-      const imgHeight = (canvas.height / canvas.width) * imgWidth;
-      doc.addImage(imgData, 'PNG', x + 4, y + 8, imgWidth, Math.min(imgHeight, labelHeight - 12));
+        const potName = (b.pot_type?.name ?? '—').toUpperCase();
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(45, 52, 54);
+        fitFontSize(doc, potName, labelWidth - 22, 12, 7);
+        doc.text(potName, x + 17, y + 9.5);
 
-      doc.setFontSize(7);
-      doc.setTextColor(100, 100, 100);
-      doc.text(b.code, x + labelWidth / 2, y + labelHeight - 3, { align: 'center' });
+        const barcodeCanvas = document.createElement('canvas');
+        JsBarcode(barcodeCanvas, b.code, {
+          format: 'CODE128',
+          displayValue: false,
+          height: 60,
+          width: 2,
+          margin: 12,
+          background: '#ffffff',
+          lineColor: '#000000',
+        });
+        const barcodeData = barcodeCanvas.toDataURL('image/png');
+        doc.addImage(barcodeData, 'PNG', x + 5, y + 17, labelWidth - 10, 17);
 
-      col++;
-      if (col >= cols) { col = 0; row++; }
-    });
+        const bakerCodes = [b.baker_code, b.baker2_code].filter((code): code is string => Boolean(code));
+        const bakerLabel = bakerCodes.join(' & ').toUpperCase();
+        if (bakerLabel) {
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(45, 52, 54);
+          fitFontSize(doc, bakerLabel, labelWidth - 10, 9, 6.5);
+          doc.text(bakerLabel, x + labelWidth / 2, y + 40, { align: 'center' });
+        }
 
-    doc.save(`code-barres-${today}-${String(nextNum).padStart(2, '0')}.pdf`);
+        doc.setFont('courier', 'normal');
+        doc.setTextColor(45, 52, 54);
+        fitFontSize(doc, b.code, labelWidth - 10, 8, 6);
+        doc.text(b.code, x + labelWidth / 2, y + 46, { align: 'center' });
+
+        col++;
+        if (col >= cols) { col = 0; row++; }
+      });
+
+      doc.save(`code-barres-${today}-${String(nextNum).padStart(2, '0')}.pdf`);
+    } catch (error) {
+      console.error('barcode PDF export failed:', error);
+      setPdfError('Impossible de générer le PDF. Vérifiez que le logo est disponible puis réessayez.');
+    } finally {
+      setExportingPdf(false);
+    }
   };
 
   if (loading) {
@@ -407,11 +453,12 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2">
             <button
-              onClick={exportPDF}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 transition-colors shadow-sm"
+              onClick={() => { void exportPDF(); }}
+              disabled={exportingPdf}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50"
             >
-              <Download className="w-4 h-4" />
-              Exporter PDF ({available.length})
+              {exportingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              {exportingPdf ? 'Génération du PDF…' : `Exporter PDF (${available.length})`}
             </button>
             <button
               onClick={() => setShowResetConfirm(true)}
@@ -421,6 +468,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
               Réinitialiser disponibles
             </button>
           </div>
+          {pdfError && <p className="w-full text-sm text-red-600">{pdfError}</p>}
         </div>
       )}
 
