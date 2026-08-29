@@ -328,8 +328,8 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
         const potName = (b.pot_type?.name ?? '—').toUpperCase();
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(45, 52, 54);
-        fitFontSize(doc, potName, labelWidth - 10, 15, 9);
-        doc.text(potName, x + labelWidth / 2, y + 24, { align: 'center' });
+        fitFontSize(doc, potName, labelWidth - 10, 12, 8);
+        doc.text(potName, x + labelWidth / 2, y + 26, { align: 'center' });
 
         const barcodeCanvas = document.createElement('canvas');
         JsBarcode(barcodeCanvas, b.code, {
@@ -342,7 +342,9 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
           lineColor: '#000000',
         });
         const barcodeData = barcodeCanvas.toDataURL('image/png');
-        doc.addImage(barcodeData, 'PNG', x + 5, y + 27, labelWidth - 10, 17);
+        // The space between the pot name and the barcode is intentionally
+        // preserved for an optional lot number when that field is introduced.
+        doc.addImage(barcodeData, 'PNG', x + 5, y + 31, labelWidth - 10, 14);
 
         const bakerCodes = [b.baker_code, b.baker2_code].filter((code): code is string => Boolean(code));
         const bakerLabel = bakerCodes.join(' & ').toUpperCase();
