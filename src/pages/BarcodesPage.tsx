@@ -326,10 +326,11 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
         doc.addImage(logoDataUrl, 'PNG', x + (labelWidth - logoWidth) / 2, y + 1.5, logoWidth, logoHeight);
 
         const potName = (b.pot_type?.name ?? '—').toUpperCase();
+        const hasProductionLot = Boolean(b.production_record_id);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(45, 52, 54);
         fitFontSize(doc, potName, labelWidth - 10, 12, 8);
-        doc.text(potName, x + labelWidth / 2, y + 26, { align: 'center' });
+        doc.text(potName, x + labelWidth / 2, y + (hasProductionLot ? 26 : 28), { align: 'center' });
 
         const barcodeCanvas = document.createElement('canvas');
         JsBarcode(barcodeCanvas, b.code, {
