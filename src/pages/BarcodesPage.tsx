@@ -346,19 +346,10 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
         // preserved for an optional lot number when that field is introduced.
         doc.addImage(barcodeData, 'PNG', x + 5, y + 31, labelWidth - 10, 14);
 
-        const bakerCodes = [b.baker_code, b.baker2_code].filter((code): code is string => Boolean(code));
-        const bakerLabel = bakerCodes.join(' & ').toUpperCase();
-        if (bakerLabel) {
-          doc.setFont('helvetica', 'bold');
-          doc.setTextColor(45, 52, 54);
-          fitFontSize(doc, bakerLabel, labelWidth - 10, 11, 7);
-          doc.text(bakerLabel, x + labelWidth / 2, y + 50, { align: 'center' });
-        }
-
         doc.setFont('courier', 'normal');
         doc.setTextColor(45, 52, 54);
         fitFontSize(doc, b.code, labelWidth - 10, 8, 6);
-        doc.text(b.code, x + labelWidth / 2, y + 56, { align: 'center' });
+        doc.text(b.code, x + labelWidth / 2, y + 53, { align: 'center' });
 
         col++;
         if (col >= cols) { col = 0; row++; }
