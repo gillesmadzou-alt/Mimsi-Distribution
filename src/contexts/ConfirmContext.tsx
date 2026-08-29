@@ -47,6 +47,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [prompt, setPrompt] = useState<PromptState | null>(null);
   const [promptValue, setPromptValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const confirmDialog = useCallback((opts: ConfirmOptions) => {
     return new Promise<boolean>((resolve) => {
@@ -73,19 +74,20 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   }, [prompt]);
 
   useEffect(() => {
-    if (prompt && textareaRef.current) {
-      textareaRef.current.focus();
-      const len = textareaRef.current.value.length;
-      textareaRef.current.setSelectionRange(len, len);
+    if (prompt) {
+      const field = prompt.multiline ? textareaRef.current : inputRef.current;
+      field?.focus();
+      const len = field?.value.length ?? 0;
+      field?.setSelectionRange(len, len);
     }
   }, [prompt]);
 
-  const headerGradient = (isDanger: boolean) =>
+  const headerGradient = (isDanger = false) =>
     isDanger !== false
       ? 'bg-gradient-to-r from-red-500 to-red-600'
       : 'bg-gradient-to-r from-amber-500 to-orange-500';
 
-  const confirmBtn = (isDanger: boolean) =>
+  const confirmBtn = (isDanger = false) =>
     isDanger !== false
       ? 'bg-red-600 hover:bg-red-700 shadow-md shadow-red-600/30'
       : 'bg-amber-500 hover:bg-amber-600 shadow-md shadow-amber-500/30';
@@ -179,7 +181,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                 />
               ) : (
                 <input
-                  ref={textareaRef as React.RefObject<HTMLInputElement>}
+                  ref={inputRef}
                   type="text"
                   value={promptValue}
                   onChange={(e) => setPromptValue(e.target.value)}

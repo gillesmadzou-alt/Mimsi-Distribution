@@ -364,7 +364,7 @@ export default function JournalPage({ onNavigate }: { onNavigate?: (page: string
     if (filtered.length === 0) return;
     setExporting(true);
     const periodLabel = periodRange
-      ? `${periodRange.startLabel} — ${periodRange.endLabel}`
+      ? periodRange.label
       : 'Toutes les periodes';
     const driverName = driverFilter !== 'all' ? drivers.find((d) => d.id === driverFilter)?.full_name ?? 'Tous' : 'Tous';
     const bakerName = bakerFilter !== 'all' ? bakers.find((b) => b.id === bakerFilter)?.full_name ?? 'Tous' : 'Tous';

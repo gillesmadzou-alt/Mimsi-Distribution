@@ -45,7 +45,7 @@ const DEPARTMENTS: Department[] = [
     name: 'Production',
     icon: ChefHat,
     color: 'text-orange-700',
-    roles: [8, 9, 15],
+    roles: [8, 9],
   },
   {
     name: 'Commercialisation',

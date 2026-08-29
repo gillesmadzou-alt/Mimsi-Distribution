@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { supabase, Profile, UserRole } from '@/lib/supabase';
+import { supabase, Profile, ROLE_LABELS, UserRole } from '@/lib/supabase';
 import { clearPageCache, getAllCachedData } from '@/lib/readCache';
 import { precacheAllData, isPrecacheDone } from '@/lib/precache';
 
@@ -421,11 +421,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data, error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) return { error: 'Impossible de modifier le mot de passe. Réessayez.' };
-    if (data.session) {
-      cacheSession(data.session);
-      setSession(data.session);
-      setUser(data.session.user);
-    }
+    setUser(data.user);
     cachePwdHash(newPassword);
     return { error: null };
   };

@@ -67,6 +67,7 @@ function OfficeApp() {
       return p;
     });
   }, []);
+  const navFromPage = useCallback((p: string) => nav(p as PageId), [nav]);
 
   const goBack = useCallback(() => {
     setHistory((h) => {
@@ -77,36 +78,36 @@ function OfficeApp() {
     });
   }, []);
   const pages: Record<PageId, React.ReactNode> = {
-    dashboard: <DashboardPage onNavigate={nav} />,
-    drivers: <DriversPage onNavigate={nav} />,
-    'sales-points': <SalesPointsPage onNavigate={nav} />,
-    stock: <StockPage onNavigate={nav} />,
-    batches: <BatchesPage onNavigate={nav} />,
-    returns: <ReturnsPage onNavigate={nav} />,
-    statistics: <StatisticsPage onNavigate={nav} />,
-    journal: <JournalPage onNavigate={nav} />,
-    receivables: <ReceivablesPage onNavigate={nav} />,
+    dashboard: <DashboardPage onNavigate={navFromPage} />,
+    drivers: <DriversPage onNavigate={navFromPage} />,
+    'sales-points': <SalesPointsPage onNavigate={navFromPage} />,
+    stock: <StockPage onNavigate={navFromPage} />,
+    batches: <BatchesPage />,
+    returns: <ReturnsPage onNavigate={navFromPage} />,
+    statistics: <StatisticsPage onNavigate={navFromPage} />,
+    journal: <JournalPage onNavigate={navFromPage} />,
+    receivables: <ReceivablesPage onNavigate={navFromPage} />,
     contributions: <ContributionsPage />,
-    compliance: <CompliancePage onNavigate={nav} />,
-    consignments: <ConsignmentsPage onNavigate={nav} />,
-    restock: <RestockPage onNavigate={nav} />,
-    leave: <LeavePage onNavigate={nav} />,
-    leaderboard: <LeaderboardPage onNavigate={nav} />,
-    audit: <AuditLogPage onNavigate={nav} />,
-    production: <ProductionPage onNavigate={nav} />,
-    map: <MapPage onNavigate={nav} />,
-    'org-chart': <OrgChartPage onNavigate={nav} />,
-    barcodes: <BarcodesPage onNavigate={nav} />,
+    compliance: <CompliancePage onNavigate={navFromPage} />,
+    consignments: <ConsignmentsPage onNavigate={navFromPage} />,
+    restock: <RestockPage onNavigate={navFromPage} />,
+    leave: <LeavePage onNavigate={navFromPage} />,
+    leaderboard: <LeaderboardPage onNavigate={navFromPage} />,
+    audit: <AuditLogPage onNavigate={navFromPage} />,
+    production: <ProductionPage onNavigate={navFromPage} />,
+    map: <MapPage onNavigate={navFromPage} />,
+    'org-chart': <OrgChartPage onNavigate={navFromPage} />,
+    barcodes: <BarcodesPage onNavigate={navFromPage} />,
     users: <UsersPage />,
-    approvals: <ApprovalsPage onNavigate={nav} />,
-    scheduling: <SchedulingPage onNavigate={nav} />,
-    ingredients: <IngredientsPage onNavigate={nav} />,
+    approvals: <ApprovalsPage onNavigate={navFromPage} />,
+    scheduling: <SchedulingPage onNavigate={navFromPage} />,
+    ingredients: <IngredientsPage onNavigate={navFromPage} />,
     reports: <ReportsPage />,
-    observations: <ObservationsPage onNavigate={nav} />,
-    expenses: <ExpensesPage onNavigate={nav} />,
-    attendance: <AttendancePage onNavigate={nav} />,
+    observations: <ObservationsPage onNavigate={navFromPage} />,
+    expenses: <ExpensesPage onNavigate={navFromPage} />,
+    attendance: <AttendancePage onNavigate={navFromPage} />,
     'notification-archive': <NotificationArchivePage />,
-    analytics: <AnalyticsPage onNavigate={nav} />,
+    analytics: <AnalyticsPage onNavigate={navFromPage} />,
     opportunistic: <OpportunisticSalesPage />,
   };
 

@@ -1,6 +1,6 @@
 import { getPendingJobs } from '@/lib/offlineQueue';
 
-type CachedDashboard = Record<string, unknown> & {
+type CachedDashboard = {
   deposits?: any[];
   returns?: any[];
   receivables?: any[];

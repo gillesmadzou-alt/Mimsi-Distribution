@@ -4,7 +4,7 @@ export interface QueueStep {
   id: string;
   table: string;
   operation: 'insert' | 'update' | 'delete' | 'rpc' | 'function';
-  body: Record<string, unknown> | Record<string, unknown>[];
+  body?: Record<string, unknown> | Record<string, unknown>[];
   filter?: { column: string; value: unknown };
   dependsOn?: string;
   injectField?: string;
@@ -120,7 +120,7 @@ export async function deleteJob(id: string): Promise<void> {
 }
 
 export async function executeStep(step: QueueStep, results: Map<string, unknown>): Promise<unknown> {
-  let body = step.body;
+  let body = step.body ?? {};
   if (step.dependsOn && step.injectField) {
     const parentResult = results.get(step.dependsOn) as Record<string, unknown> | undefined;
     const injectedId = parentResult?.id;

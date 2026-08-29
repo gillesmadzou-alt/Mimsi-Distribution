@@ -523,6 +523,7 @@ export interface ProductionRecord {
   baker_id: string;
   pot_type_id: string;
   quantity: number;
+  pots_produced?: number | null;
   pots_burned: number;
   madeleines_good: number;
   madeleines_burned: number;
@@ -790,6 +791,7 @@ export interface DeliveryExpense {
   created_at: string;
   sales_point?: SalesPoint;
   driver?: Driver;
+  batch?: { batch_code: string };
 }
 
 export interface AttendanceRecord {
@@ -924,6 +926,8 @@ export interface DoughBatch {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  pates_produced: number | null;
+  ingredient_variance: number | null;
   kneader?: Kneader;
   ingredients?: DoughBatchIngredient[];
   deliveries?: DoughDelivery[];

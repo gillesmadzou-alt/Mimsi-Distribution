@@ -563,7 +563,8 @@ export default function BatchesPage() {
         .eq('sales_point_id', depositForm.sales_point_id)
         .order('created_at', { ascending: false }).limit(1).single();
 
-      if (depositId.data) {
+      const savedDepositId = depositId.data?.id;
+      if (savedDepositId) {
         const barcodeIds = [...new Set(
           scannedBarcodes.flatMap((scan) => scan.barcode ? [scan.barcode.id] : []),
         )];
@@ -571,7 +572,7 @@ export default function BatchesPage() {
           const { error: barcodeLinkError } = await supabase
             .from('deposit_barcodes')
             .insert(barcodeIds.map((barcode_id) => ({
-              deposit_id: depositId.data.id,
+              deposit_id: savedDepositId,
               barcode_id,
             })));
           if (barcodeLinkError) {
@@ -604,11 +605,12 @@ export default function BatchesPage() {
     if (!result.offline) syncNow();
 
     // Insert delivery expenses
-    if (depositExpenses.length > 0 && !result.offline && depositId.data) {
+    const savedDepositId = depositId.data?.id;
+    if (depositExpenses.length > 0 && !result.offline && savedDepositId) {
       const batch = batches.find((b) => b.id === depositForm.batch_id);
       await supabase.from('delivery_expenses').insert(
         depositExpenses.filter((e) => e.amount_fcfa > 0).map((e) => ({
-          deposit_id: depositId.data.id,
+          deposit_id: savedDepositId,
           batch_id: depositForm.batch_id,
           sales_point_id: depositForm.sales_point_id,
           driver_id: batch?.driver_id ?? null,

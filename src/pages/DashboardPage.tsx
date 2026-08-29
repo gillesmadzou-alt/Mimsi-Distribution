@@ -34,6 +34,11 @@ interface RawData {
   consignments: { id: string; batch_id: string | null; quantity_deposited: number; quantity_returned: number; sales_point?: SalesPoint }[];
 }
 
+function firstRelation<T>(value: T | T[] | null | undefined): T | undefined {
+  if (Array.isArray(value)) return value[0];
+  return value ?? undefined;
+}
+
 function inRange(dateStr: string, start: string, end: string): boolean {
   return dateStr >= start && dateStr <= end;
 }
@@ -132,18 +137,30 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
         bakers: bakersRes.data ?? [],
         kneaders: kneadersRes.data ?? [],
         batches,
-        deposits: depositsRes.data ?? [],
-        returns: returnsRes.data ?? [],
+        deposits: (depositsRes.data ?? []).map((row) => ({
+          ...row,
+          sales_point: firstRelation<SalesPoint>(row.sales_point),
+        })),
+        returns: (returnsRes.data ?? []).map((row) => ({
+          ...row,
+          sales_point: firstRelation<SalesPoint>(row.sales_point),
+        })),
         batchPotTypes: batchPotTypesRes.data ?? [],
         returnPotTypes: returnPotTypesRes.data ?? [],
         pots: potsRes.data ?? [],
         salesPoints,
-        receivables,
+        receivables: receivables.map((row) => ({
+          ...row,
+          sales_point: firstRelation<SalesPoint>(row.sales_point),
+        })),
         productionRecords: productionRes.data ?? [],
         doughDeliveries: doughRes.data ?? [],
         deliveryExpenses: expensesRes.data ?? [],
         stockMovements: stockMovementsRes.data ?? [],
-        consignments: consignmentsRes.data ?? [],
+        consignments: (consignmentsRes.data ?? []).map((row) => ({
+          ...row,
+          sales_point: firstRelation<SalesPoint>(row.sales_point),
+        })),
       };
     });
     if (!result.data && profile?.role === 1) {
@@ -302,7 +319,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
       : raw.deliveryExpenses;
     const totalExpenses = visibleExpenses.reduce((s, e) => s + (e.amount_fcfa || 0), 0);
     const visibleStockMovements = driverIds
-      ? raw.stockMovements.filter((m) => visibleBatchIds.has(m.batch_id))
+      ? raw.stockMovements.filter((m) => m.batch_id != null && visibleBatchIds.has(m.batch_id))
       : raw.stockMovements;
     const stockIn = visibleStockMovements.filter((m) => m.movement_type === 'entree' || m.movement_type === 'retour').reduce((s, m) => s + m.quantity, 0);
     const stockOut = visibleStockMovements.filter((m) => m.movement_type === 'attribution' || m.movement_type === 'sortie').reduce((s, m) => s + m.quantity, 0);
@@ -791,7 +808,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {stats.returnPotBreakdown.map((row) => {
-                  const pot = raw.pots.find((p) => p.id === row.potTypeId);
+                  const pot = raw?.pots.find((p) => p.id === row.potTypeId);
                   return (
                     <tr key={row.potTypeId}>
                       <td className="py-2.5 font-medium text-gray-900">{pot?.name ?? '—'}</td>

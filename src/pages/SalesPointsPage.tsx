@@ -884,7 +884,7 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
         open={!!geoTargetPoint}
         initialLat={geoTargetPoint?.gps_lat?.toString() ?? ''}
         initialLng={geoTargetPoint?.gps_lng?.toString() ?? ''}
-        onConfirm={(la, ln) => saveGeo(la, ln)}
+        onConfirm={(la, ln) => saveGeo(Number(la), Number(ln))}
         onClose={() => setGeoTargetPoint(null)}
       />
 

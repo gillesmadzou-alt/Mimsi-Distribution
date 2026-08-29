@@ -259,8 +259,9 @@ export default function AppShell({ current, onNavigate, onBack, canGoBack, child
   };
 
   if (!profile) return null;
-  const role = Number(profile.role) as UserRole;
-  if (isNaN(role) || role < 1 || role > 16 || role === 15) return null;
+  const rawRole = Number(profile.role);
+  if (isNaN(rawRole) || rawRole < 1 || rawRole > 16 || rawRole === 15) return null;
+  const role = rawRole as UserRole;
 
   const toggleSection = (label: string) => {
     setCollapsed((prev) => {
