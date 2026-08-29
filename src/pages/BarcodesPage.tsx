@@ -345,7 +345,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
         const barcodeData = barcodeCanvas.toDataURL('image/png');
         // The space between the pot name and the barcode is intentionally
         // preserved for an optional lot number when that field is introduced.
-        doc.addImage(barcodeData, 'PNG', x + 5, y + 31, labelWidth - 10, 14);
+        doc.addImage(barcodeData, 'PNG', x + 5, y + 33, labelWidth - 10, 14);
 
         doc.setFont('courier', 'normal');
         doc.setTextColor(45, 52, 54);
