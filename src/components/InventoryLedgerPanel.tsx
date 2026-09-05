@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Archive, ArrowDownToLine, ArrowUpFromLine, Boxes, ClipboardList, Cookie, Disc3, Package, Plus, Wheat, X } from 'lucide-react';
+import { Archive, Boxes, CalendarClock, ClipboardList, Cookie, Disc3, Download, Package, Plus, Wheat, X } from 'lucide-react';
 import { Ingredient, PotType, supabase } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useOfflineSave, buildSteps } from '@/lib/useOfflineSave';
@@ -21,6 +21,9 @@ interface LedgerEntry {
   notes: string | null;
   created_at: string;
 }
+
+interface InventorySchedule { id: string; name: string; frequency: string; next_inventory_on: string; categories: Category[]; is_active: boolean; }
+interface InventoryLine { id: string; item_category: Category; pot_type_id: string | null; ingredient_id: string | null; theoretical_quantity: number; counted_quantity: number | null; notes: string | null; }
 
 const CATEGORY: Record<Category, { label: string; Icon: typeof Package; tone: string }> = {
   ingredient: { label: 'Intrants de production', Icon: Wheat, tone: 'bg-amber-50 text-amber-700' },
@@ -48,28 +51,35 @@ export default function InventoryLedgerPanel({ canRecord }: { canRecord: boolean
   const [pots, setPots] = useState<PotType[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
+  const [schedules, setSchedules] = useState<InventorySchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState<Category>('ingredient');
   const [showForm, setShowForm] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [activeLines, setActiveLines] = useState<InventoryLine[] | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [scheduleForm, setScheduleForm] = useState({ name: 'Inventaire de stock', frequency: 'hebdomadaire', nextInventoryOn: new Date().toISOString().slice(0, 10) });
   const [form, setForm] = useState({ itemId: '', operation: 'entree' as Operation, quantity: '', notes: '', occurredOn: new Date().toISOString().slice(0, 10) });
 
   const load = useCallback(async () => {
     setLoading(true);
     const result = await fetchWithCache('inventory:ledger:v1', async () => {
-      const [potRes, ingredientRes, entryRes] = await Promise.all([
+      const [potRes, ingredientRes, entryRes, scheduleRes] = await Promise.all([
         supabase.from('pot_types').select('*').eq('is_active', true).order('name'),
         supabase.from('ingredients').select('*').eq('is_active', true).order('name'),
         supabase.from('inventory_entries').select('*').order('created_at', { ascending: false }).limit(500),
+        supabase.from('inventory_schedules').select('*').eq('is_active', true).order('next_inventory_on'),
       ]);
       if (potRes.error) throw potRes.error;
       if (ingredientRes.error) throw ingredientRes.error;
       if (entryRes.error) throw entryRes.error;
-      return { pots: potRes.data ?? [], ingredients: ingredientRes.data ?? [], entries: entryRes.data ?? [] };
+      return { pots: potRes.data ?? [], ingredients: ingredientRes.data ?? [], entries: entryRes.data ?? [], schedules: scheduleRes.data ?? [] };
     });
     if (result.data) {
       setPots(result.data.pots as PotType[]);
       setIngredients(result.data.ingredients as Ingredient[]);
       setEntries(result.data.entries as LedgerEntry[]);
+      setSchedules(result.data.schedules as InventorySchedule[]);
     }
     setLoading(false);
   }, [fetchWithCache]);
@@ -100,6 +110,43 @@ export default function InventoryLedgerPanel({ canRecord }: { canRecord: boolean
   const openForm = () => {
     setForm({ itemId: '', operation: 'entree', quantity: '', notes: '', occurredOn: new Date().toISOString().slice(0, 10) });
     setShowForm(true);
+  };
+
+  const downloadReport = () => {
+    const content = ['Article;Stock initial;Entrées;Sorties;Stock final', ...rows.map(({ item, initial, entriesTotal, exitsTotal, final }) => `${item.name};${initial ?? ''};${entriesTotal};${exitsTotal};${final}`)].join('\n');
+    const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = `rapport-stock-${category}-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
+  };
+
+  const saveSchedule = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const { error } = await supabase.from('inventory_schedules').insert({ name: scheduleForm.name, frequency: scheduleForm.frequency, next_inventory_on: scheduleForm.nextInventoryOn, categories: Object.keys(CATEGORY) });
+    if (error) { toast('Le programme n’a pas pu être créé.', 'error'); return; }
+    setShowSchedule(false); toast('Programme d’inventaire créé.', 'success'); load();
+  };
+
+  const startInventory = async (schedule: InventorySchedule) => {
+    const { data, error } = await supabase.rpc('create_inventory_session', { p_schedule_id: schedule.id, p_inventory_date: schedule.next_inventory_on });
+    if (error || !data) { toast('La fiche d’inventaire n’a pas pu être créée.', 'error'); return; }
+    const { data: lines } = await supabase.from('inventory_session_lines').select('*').eq('session_id', data).order('item_category');
+    setActiveSessionId(data);
+    setActiveLines((lines ?? []) as InventoryLine[]);
+    toast('Fiche d’inventaire créée. Saisissez les quantités comptées.', 'success');
+  };
+
+  const updateCount = async (line: InventoryLine, value: string) => {
+    const count = value === '' ? null : Number(value);
+    setActiveLines((current) => current?.map((entry) => entry.id === line.id ? { ...entry, counted_quantity: count } : entry) ?? null);
+    const { error } = await supabase.from('inventory_session_lines').update({ counted_quantity: count }).eq('id', line.id);
+    if (error) toast('La quantité comptée n’a pas pu être enregistrée.', 'error');
+  };
+
+  const validateInventory = async () => {
+    if (!activeSessionId) return;
+    const { error } = await supabase.from('inventory_sessions').update({ status: 'valide', validated_at: new Date().toISOString() }).eq('id', activeSessionId);
+    if (error) { toast('La fiche n’a pas pu être validée.', 'error'); return; }
+    toast('Inventaire validé. La fiche et les écarts restent consultables.', 'success');
+    setActiveLines(null); setActiveSessionId(null);
   };
 
   const submit = async (event: React.FormEvent) => {
@@ -137,7 +184,7 @@ export default function InventoryLedgerPanel({ canRecord }: { canRecord: boolean
           <div className="flex items-center gap-2 text-amber-800"><ClipboardList className="h-5 w-5" /><h2 className="font-bold">Registre de gestion de stock</h2></div>
           <p className="mt-1 text-xs text-gray-600">Stock initial, entrées, sorties et stock final. Les mouvements de production, tournées et retours sont ajoutés automatiquement.</p>
         </div>
-        {canRecord && <button onClick={openForm} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm"><Plus className="h-4 w-4" /> Enregistrer un mouvement</button>}
+        <div className="flex flex-col gap-2 sm:flex-row">{canRecord && <button onClick={() => setShowSchedule(true)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-white px-4 py-2.5 text-sm font-semibold text-amber-800"><CalendarClock className="h-4 w-4" /> Programmer inventaire</button>}{canRecord && <button onClick={openForm} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm"><Plus className="h-4 w-4" /> Enregistrer un mouvement</button>}</div>
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
@@ -156,6 +203,8 @@ export default function InventoryLedgerPanel({ canRecord }: { canRecord: boolean
         </table>
       </div>
       <p className="mt-2 text-xs text-gray-500">Le stock initial est défini une fois par article. Le stock final est le stock réellement disponible et se met à jour sur tous les appareils connectés.</p>
+      <div className="mt-3 flex flex-col gap-2 rounded-xl bg-white p-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-gray-700">Rapport : <strong>{config.label}</strong></p><button onClick={downloadReport} className="inline-flex items-center gap-2 text-sm font-semibold text-amber-700"><Download className="h-4 w-4" /> Télécharger le rapport CSV</button></div>
+      {schedules.length > 0 && <div className="mt-3 space-y-2">{schedules.map((schedule) => <div key={schedule.id} className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-gray-800">{schedule.name}</p><p className="text-xs text-gray-500">{schedule.frequency} · prochain inventaire : {new Date(schedule.next_inventory_on).toLocaleDateString('fr-FR')}</p></div>{canRecord && <button onClick={() => startInventory(schedule)} className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">Ouvrir la fiche</button>}</div>)}</div>}
 
       {showForm && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => setShowForm(false)}><div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between"><div className="flex items-center gap-2"><span className={`rounded-lg p-2 ${config.tone}`}><Icon className="h-5 w-5" /></span><h3 className="font-bold text-gray-900">{config.label}</h3></div><button onClick={() => setShowForm(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X className="h-5 w-5" /></button></div>
@@ -169,6 +218,8 @@ export default function InventoryLedgerPanel({ canRecord }: { canRecord: boolean
           <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 py-2.5 font-semibold text-white"><Boxes className="h-4 w-4" /> Enregistrer</button>
         </form>
       </div></div>}
+      {showSchedule && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => setShowSchedule(false)}><form onSubmit={saveSchedule} className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}><div className="mb-4 flex justify-between"><h3 className="font-bold">Programmer un inventaire</h3><button type="button" onClick={() => setShowSchedule(false)}><X className="h-5 w-5" /></button></div><div className="space-y-3"><label className="block text-sm font-medium">Nom<input required value={scheduleForm.name} onChange={(e) => setScheduleForm({ ...scheduleForm, name: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2" /></label><label className="block text-sm font-medium">Fréquence<select value={scheduleForm.frequency} onChange={(e) => setScheduleForm({ ...scheduleForm, frequency: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2"><option value="quotidien">Quotidien</option><option value="hebdomadaire">Hebdomadaire</option><option value="mensuel">Mensuel</option></select></label><label className="block text-sm font-medium">Première date<input type="date" required value={scheduleForm.nextInventoryOn} onChange={(e) => setScheduleForm({ ...scheduleForm, nextInventoryOn: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2" /></label><button className="w-full rounded-xl bg-amber-500 py-2.5 font-semibold text-white">Créer le programme</button></div></form></div>}
+      {activeLines && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"><div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"><div className="mb-3 flex justify-between"><div><h3 className="font-bold">Fiche d’inventaire</h3><p className="text-xs text-gray-500">Saisissez le stock compté ; l’écart est calculé automatiquement.</p></div><button onClick={() => { setActiveLines(null); setActiveSessionId(null); }}><X className="h-5 w-5" /></button></div><div className="space-y-2">{activeLines.map((line) => { const item = line.item_category === 'ingredient' ? ingredients.find((i) => i.id === line.ingredient_id) : pots.find((p) => p.id === line.pot_type_id); const diff = line.counted_quantity == null ? null : line.counted_quantity - Number(line.theoretical_quantity); return <div key={line.id} className="grid grid-cols-[1fr_90px_90px] gap-2 rounded-lg border border-gray-100 p-2 text-sm"><div><p className="font-medium">{item?.name ?? 'Article'}</p><p className="text-xs text-gray-500">{CATEGORY[line.item_category].label} · théorique {line.theoretical_quantity}</p></div><input type="number" placeholder="Compté" value={line.counted_quantity ?? ''} onChange={(e) => updateCount(line, e.target.value)} className="rounded-lg border border-gray-200 px-2 py-1" /><p className={`self-center text-right font-semibold ${diff == null || diff === 0 ? 'text-gray-500' : diff > 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{diff == null ? '—' : `${diff > 0 ? '+' : ''}${diff}`}</p></div>; })}</div><button onClick={validateInventory} className="mt-4 w-full rounded-xl bg-amber-500 py-2.5 font-semibold text-white">Valider la fiche d’inventaire</button></div></div>}
     </section>
   );
 }
