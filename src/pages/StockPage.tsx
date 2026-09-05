@@ -5,6 +5,7 @@ import { getCachedPageData, cachePageData } from '@/lib/readCache';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import InventoryLedgerPanel from '@/components/InventoryLedgerPanel';
+import EquipmentAssetsPanel from '@/components/EquipmentAssetsPanel';
 import {
   Plus, Package, AlertTriangle, TrendingUp, TrendingDown, X, Edit2, History, Archive, Disc, Cookie, ArrowRight, CloudOff,
 } from 'lucide-react';
@@ -287,6 +288,7 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
       </div>
 
       <InventoryLedgerPanel canRecord={canRecordStock} />
+      <EquipmentAssetsPanel canRecord={canRecordStock} />
 
       {loading ? (
         loadError ? (
