@@ -67,7 +67,7 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
     setLoadError(null);
     try {
       const result = await fetchWithCache('stock:pot_types', async () => {
-        const { data, error } = await supabase.from('pot_types').select('*').order('name');
+        const { data, error } = await supabase.from('pot_types').select('*').eq('is_active', true).order('name');
         if (error) throw error;
         return data ?? [];
       });

@@ -7,7 +7,8 @@ import { useToast } from '@/contexts/ToastContext';
 import { brazzavilleToday } from '@/lib/brazzavilleTime';
 
 type Category = 'ingredient' | 'madeleine' | 'ready_pot' | 'empty_pot' | 'lid';
-type Operation = 'initial' | 'entree' | 'sortie' | 'retour';
+type ManualOperation = 'initial' | 'entree' | 'sortie' | 'retour';
+type Operation = ManualOperation | 'ajustement';
 
 interface LedgerEntry {
   id: string;
@@ -34,7 +35,7 @@ const CATEGORY: Record<Category, { label: string; Icon: typeof Package; tone: st
   lid: { label: 'Couvercles', Icon: Disc3, tone: 'bg-cyan-50 text-cyan-700' },
 };
 
-const OPERATION_LABEL: Record<Operation, string> = {
+const OPERATION_LABEL: Record<ManualOperation, string> = {
   initial: 'Stock initial', entree: 'Entrée', sortie: 'Sortie', retour: 'Retour',
 };
 
@@ -54,16 +55,18 @@ export default function InventoryLedgerPanel({ canRecord }: { canRecord: boolean
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [schedules, setSchedules] = useState<InventorySchedule[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [category, setCategory] = useState<Category>('ingredient');
   const [showForm, setShowForm] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
   const [activeLines, setActiveLines] = useState<InventoryLine[] | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [scheduleForm, setScheduleForm] = useState({ name: 'Inventaire de stock', frequency: 'hebdomadaire', nextInventoryOn: brazzavilleToday(), categories: Object.keys(CATEGORY) as Category[] });
-  const [form, setForm] = useState({ itemId: '', operation: 'entree' as Operation, quantity: '', notes: '', occurredOn: brazzavilleToday() });
+  const [form, setForm] = useState({ itemId: '', operation: 'entree' as ManualOperation, quantity: '', notes: '', occurredOn: brazzavilleToday() });
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     const result = await fetchWithCache('inventory:ledger:v1', async () => {
       const [potRes, ingredientRes, entryRes, scheduleRes] = await Promise.all([
         supabase.from('pot_types').select('*').eq('is_active', true).order('name'),
@@ -74,6 +77,7 @@ export default function InventoryLedgerPanel({ canRecord }: { canRecord: boolean
       if (potRes.error) throw potRes.error;
       if (ingredientRes.error) throw ingredientRes.error;
       if (entryRes.error) throw entryRes.error;
+      if (scheduleRes.error) throw scheduleRes.error;
       return { pots: potRes.data ?? [], ingredients: ingredientRes.data ?? [], entries: entryRes.data ?? [], schedules: scheduleRes.data ?? [] };
     });
     if (result.data) {
@@ -81,6 +85,8 @@ export default function InventoryLedgerPanel({ canRecord }: { canRecord: boolean
       setIngredients(result.data.ingredients as Ingredient[]);
       setEntries(result.data.entries as LedgerEntry[]);
       setSchedules(result.data.schedules as InventorySchedule[]);
+    } else {
+      setLoadError(result.error ?? 'Le registre de stock n’a pas pu être chargé.');
     }
     setLoading(false);
   }, [fetchWithCache]);
@@ -101,11 +107,21 @@ export default function InventoryLedgerPanel({ canRecord }: { canRecord: boolean
   const rows = useMemo(() => selectedItems.map((item) => {
     const id = item.id;
     const related = entries.filter((entry) => category === 'ingredient' ? entry.ingredient_id === id : entry.pot_type_id === id && entry.item_category === category);
-    const entriesTotal = related.filter((e) => e.operation === 'entree' || e.operation === 'retour').reduce((sum, e) => sum + Number(e.quantity), 0);
-    const exitsTotal = related.filter((e) => e.operation === 'sortie').reduce((sum, e) => sum + Number(e.quantity), 0);
     const lastInitial = related.find((e) => e.operation === 'initial');
+    const movements = lastInitial ? related.filter((e) => e.created_at > lastInitial.created_at) : related;
+    const entriesTotal = movements.reduce((sum, entry) => {
+      if (entry.operation === 'entree' || entry.operation === 'retour') return sum + Number(entry.quantity);
+      if (entry.operation === 'ajustement' && Number(entry.delta) > 0) return sum + Number(entry.delta);
+      return sum;
+    }, 0);
+    const exitsTotal = movements.reduce((sum, entry) => {
+      if (entry.operation === 'sortie') return sum + Number(entry.quantity);
+      if (entry.operation === 'ajustement' && Number(entry.delta) < 0) return sum + Math.abs(Number(entry.delta));
+      return sum;
+    }, 0);
     const final = category === 'ingredient' ? (item as Ingredient).stock_quantity : stockFor(item as PotType, category as Exclude<Category, 'ingredient'>);
-    return { item, final, entriesTotal, exitsTotal, initial: lastInitial?.quantity ?? null, related };
+    const initial = lastInitial?.quantity ?? Number(final) - entriesTotal + exitsTotal;
+    return { item, final, entriesTotal, exitsTotal, initial, related };
   }), [category, entries, ingredients, pots, selectedItems]);
 
   const openForm = () => {
@@ -198,7 +214,7 @@ export default function InventoryLedgerPanel({ canRecord }: { canRecord: boolean
         <table className="min-w-[700px] w-full text-sm">
           <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500"><tr><th className="px-4 py-3">Article</th><th className="px-3 py-3 text-right">Stock initial</th><th className="px-3 py-3 text-right">Entrées</th><th className="px-3 py-3 text-right">Sorties</th><th className="px-4 py-3 text-right">Stock final</th></tr></thead>
           <tbody>
-            {loading ? <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Chargement du registre…</td></tr> : rows.length === 0 ? <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Aucun article dans cette catégorie.</td></tr> : rows.map(({ item, initial, entriesTotal, exitsTotal, final }) => <tr key={item.id} className="border-t border-gray-100"><td className="px-4 py-3 font-medium text-gray-800">{item.name}{category === 'ingredient' && <span className="ml-1 text-xs font-normal text-gray-400">/ {(item as Ingredient).unit}</span>}</td><td className="px-3 py-3 text-right text-gray-600">{initial ?? '—'}</td><td className="px-3 py-3 text-right font-medium text-emerald-700">+{entriesTotal}</td><td className="px-3 py-3 text-right font-medium text-rose-700">−{exitsTotal}</td><td className="px-4 py-3 text-right text-base font-bold text-gray-900">{final}</td></tr>)}
+            {loading ? <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Chargement du registre…</td></tr> : loadError ? <tr><td colSpan={5} className="px-4 py-8 text-center text-red-600">{loadError}</td></tr> : rows.length === 0 ? <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Aucun article dans cette catégorie.</td></tr> : rows.map(({ item, initial, entriesTotal, exitsTotal, final }) => <tr key={item.id} className="border-t border-gray-100"><td className="px-4 py-3 font-medium text-gray-800">{item.name}{category === 'ingredient' && <span className="ml-1 text-xs font-normal text-gray-400">/ {(item as Ingredient).unit}</span>}</td><td className="px-3 py-3 text-right text-gray-600">{initial}</td><td className="px-3 py-3 text-right font-medium text-emerald-700">+{entriesTotal}</td><td className="px-3 py-3 text-right font-medium text-rose-700">−{exitsTotal}</td><td className="px-4 py-3 text-right text-base font-bold text-gray-900">{final}</td></tr>)}
           </tbody>
         </table>
       </div>
@@ -210,7 +226,7 @@ export default function InventoryLedgerPanel({ canRecord }: { canRecord: boolean
         <div className="mb-4 flex items-center justify-between"><div className="flex items-center gap-2"><span className={`rounded-lg p-2 ${config.tone}`}><Icon className="h-5 w-5" /></span><h3 className="font-bold text-gray-900">{config.label}</h3></div><button onClick={() => setShowForm(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X className="h-5 w-5" /></button></div>
         <form onSubmit={submit} className="space-y-3">
           <label className="block text-sm font-medium text-gray-700">Article<select required value={form.itemId} onChange={(e) => setForm({ ...form, itemId: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:border-amber-500"><option value="">— Sélectionner —</option>{selectedItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-          <label className="block text-sm font-medium text-gray-700">Opération<select value={form.operation} onChange={(e) => setForm({ ...form, operation: e.target.value as Operation })} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:border-amber-500">{(Object.keys(OPERATION_LABEL) as Operation[]).map((key) => <option key={key} value={key}>{OPERATION_LABEL[key]}</option>)}</select></label>
+          <label className="block text-sm font-medium text-gray-700">Opération<select value={form.operation} onChange={(e) => setForm({ ...form, operation: e.target.value as ManualOperation })} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:border-amber-500">{(Object.keys(OPERATION_LABEL) as ManualOperation[]).map((key) => <option key={key} value={key}>{OPERATION_LABEL[key]}</option>)}</select></label>
           <label className="block text-sm font-medium text-gray-700">{form.operation === 'initial' ? 'Quantité comptée au démarrage' : 'Quantité'}<input required min="0.01" step="any" type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:border-amber-500" /></label>
           <label className="block text-sm font-medium text-gray-700">Date<input required type="date" value={form.occurredOn} onChange={(e) => setForm({ ...form, occurredOn: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:border-amber-500" /></label>
           <label className="block text-sm font-medium text-gray-700">Observation (facultatif)<input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:border-amber-500" /></label>
