@@ -4,8 +4,9 @@ import {
   supabase, ROLE_LABELS, formatFCFA, UserRole, Profile,
   Driver, SalesPoint, DeliveryBatch, Deposit, Return, ProductionRecord,
   Receivable, StockMovement, Ingredient, DoughBatch, Kneader, Baker,
-  AttendanceRecord, QuotaPayment,
+  AttendanceRecord, QuotaPayment, PotType,
 } from '@/lib/supabase';
+import { brazzavilleToday, formatBrazzavilleDate } from '@/lib/brazzavilleTime';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -36,13 +37,18 @@ interface ReportDef {
   }>;
 }
 
-const fmtDate = (d: string) => new Date(d).toLocaleDateString('fr-FR');
+const fmtDate = (d: string) => formatBrazzavilleDate(d);
 
 const DRIVER_ROLES: UserRole[] = [1, 10, 11];
 const BAKER_ROLES: UserRole[] = [9];
 const KNEADER_TYPE = 'kneader';
 const ADMIN_ROLES: UserRole[] = [4, 5, 6, 7, 8];
 const OTHER_ROLES: UserRole[] = [2, 3, 12, 13, 14];
+
+interface EquipmentAsset {
+  id: string; name: string; asset_type: 'materiel' | 'outil'; quantity: number;
+  unit_value_fcfa: number; annual_annuity_fcfa: number; condition: string; location: string | null; notes: string | null;
+}
 
 function buildAttendanceReport(
   records: AttendanceRecord[],
@@ -143,9 +149,9 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState<string | null>(null);
   const [fromDate, setFromDate] = useState(() => {
-    const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10);
+    const d = new Date(); d.setDate(1); return brazzavilleToday(d);
   });
-  const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [toDate, setToDate] = useState(() => brazzavilleToday());
   const [attPersonType, setAttPersonType] = useState<string>('all');
   const [attPerson, setAttPerson] = useState<string>('all');
 
@@ -165,6 +171,8 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
   const [bakers, setBakers] = useState<Baker[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [potTypes, setPotTypes] = useState<PotType[]>([]);
+  const [equipmentAssets, setEquipmentAssets] = useState<EquipmentAsset[]>([]);
 
   const { fetchWithCache, isOffline } = useOfflineFetch();
 
@@ -190,7 +198,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
   const loadData = useCallback(async () => {
     setLoading(true);
     const result = await fetchWithCache('reports-page', async () => {
-      const [b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp] = await Promise.all([
+      const [b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp, pots, equipment] = await Promise.all([
         supabase.from('delivery_batches').select('*, driver:drivers(*), pot_type:pot_types(*)').order('batch_date', { ascending: false }).limit(500),
         supabase.from('deposits').select('*, sales_point:sales_points(*), batch:delivery_batches(*)').order('deposited_at', { ascending: false }).limit(500),
         supabase.from('returns').select('*, sales_point:sales_points(*), batch:delivery_batches(*)').order('returned_at', { ascending: false }).limit(500),
@@ -206,11 +214,13 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
         supabase.from('profiles').select('*').order('full_name'),
         supabase.from('attendance_records').select('*').order('attendance_date', { ascending: false }).limit(2000),
         supabase.from('quota_payments').select('*').order('payment_date', { ascending: false }).limit(2000),
+        supabase.from('pot_types').select('*').eq('is_active', true).order('name'),
+        supabase.from('equipment_assets').select('*').eq('is_active', true).order('asset_type').order('name'),
       ]);
-      return { b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp };
+      return { b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp, pots, equipment };
     });
     if (result.data) {
-      const { b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp } = result.data;
+      const { b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp, pots, equipment } = result.data;
       setAttendanceRecords(att.data ?? []);
       setBatches(b.data ?? []);
       setDeposits(dep.data ?? []);
@@ -226,13 +236,15 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
       setBakers(bk.data ?? []);
       setProfiles(pr.data ?? []);
       setQuotaPayments(qp?.data ?? []);
+      setPotTypes((pots.data ?? []) as PotType[]);
+      setEquipmentAssets((equipment.data ?? []) as EquipmentAsset[]);
     }
     setLoading(false);
   }, [fetchWithCache]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  useRealtimeSubscription('reports-page', isOffline ? [] : ['delivery_batches', 'deposits', 'returns', 'receivables', 'production_records', 'stock_movements', 'ingredients', 'dough_batches', 'sales_points', 'quota_payments'], () => { loadData(); });
+  useRealtimeSubscription('reports-page', isOffline ? [] : ['delivery_batches', 'deposits', 'returns', 'receivables', 'production_records', 'stock_movements', 'ingredients', 'dough_batches', 'sales_points', 'quota_payments', 'pot_types', 'equipment_assets'], () => { loadData(); });
 
   const inRange = (dateStr: string) => {
     const d = dateStr.slice(0, 10);
@@ -510,6 +522,54 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
             { label: 'Valeur totale du stock', value: formatFCFA(totalValue) },
             { label: 'Intrants en alerte', value: String(lowStock.length) },
           ],
+        };
+      },
+    },
+    {
+      id: 'packaging-stock',
+      title: 'Rapport de stock : pots et madeleines',
+      description: 'Pots prêts, pots vides, couvercles et madeleines par type de pot',
+      icon: Package,
+      roles: [2, 4, 5, 6, 8, 16],
+      build: async () => {
+        const ready = potTypes.reduce((sum, pot) => sum + Number(pot.stock_quantity ?? 0), 0);
+        const empty = potTypes.reduce((sum, pot) => sum + Number(pot.empty_pots_stock ?? 0), 0);
+        const lids = potTypes.reduce((sum, pot) => sum + Number(pot.empty_lids_stock ?? 0), 0);
+        const madeleines = potTypes.reduce((sum, pot) => sum + Number(pot.madeleines_stock ?? 0), 0);
+        return {
+          columns: [
+            { header: 'Type de pot', key: 'name' },
+            { header: 'Pots prêts', key: 'ready', align: 'right' as const },
+            { header: 'Pots vides', key: 'empty', align: 'right' as const },
+            { header: 'Couvercles', key: 'lids', align: 'right' as const },
+            { header: 'Madeleines libres', key: 'madeleines', align: 'right' as const },
+            { header: 'Capacité/pot', key: 'capacity', align: 'right' as const },
+          ],
+          rows: potTypes.map((pot) => ({ name: pot.name, ready: Number(pot.stock_quantity ?? 0), empty: Number(pot.empty_pots_stock ?? 0), lids: Number(pot.empty_lids_stock ?? 0), madeleines: Number(pot.madeleines_stock ?? 0), capacity: pot.madeleine_count ?? 0 })),
+          summary: [
+            { label: 'Pots prêts', value: String(ready) }, { label: 'Pots vides', value: String(empty) },
+            { label: 'Couvercles', value: String(lids) }, { label: 'Madeleines libres', value: String(madeleines) },
+          ],
+        };
+      },
+    },
+    {
+      id: 'equipment-assets',
+      title: 'Rapport matériels et outils',
+      description: 'Quantités, état, valeur et annuité annuelle du matériel',
+      icon: Layers,
+      roles: [2, 4, 5, 6, 16],
+      build: async () => {
+        const totalValue = equipmentAssets.reduce((sum, item) => sum + Number(item.quantity) * Number(item.unit_value_fcfa), 0);
+        const annualTotal = equipmentAssets.reduce((sum, item) => sum + Number(item.annual_annuity_fcfa), 0);
+        return {
+          columns: [
+            { header: 'Élément', key: 'name' }, { header: 'Nature', key: 'type' }, { header: 'Quantité', key: 'quantity', align: 'right' as const },
+            { header: 'État', key: 'condition' }, { header: 'Emplacement', key: 'location' }, { header: 'Valeur unitaire', key: 'unitValue', align: 'right' as const },
+            { header: 'Valeur totale', key: 'totalValue', align: 'right' as const }, { header: 'Annuité annuelle', key: 'annuity', align: 'right' as const },
+          ],
+          rows: equipmentAssets.map((item) => ({ name: item.name, type: item.asset_type === 'outil' ? 'Outil' : 'Matériel', quantity: Number(item.quantity), condition: item.condition.replace(/_/g, ' '), location: item.location ?? '—', unitValue: formatFCFA(Number(item.unit_value_fcfa)), totalValue: formatFCFA(Number(item.quantity) * Number(item.unit_value_fcfa)), annuity: formatFCFA(Number(item.annual_annuity_fcfa)) })),
+          summary: [{ label: 'Éléments enregistrés', value: String(equipmentAssets.length) }, { label: 'Valeur totale', value: formatFCFA(totalValue) }, { label: 'Annuité annuelle totale', value: formatFCFA(annualTotal) }],
         };
       },
     },

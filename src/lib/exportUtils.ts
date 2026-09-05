@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import { formatFCFA } from '@/lib/supabase';
+import { formatBrazzavilleDateTime } from '@/lib/brazzavilleTime';
 
 interface PdfColumn {
   header: string;
@@ -31,7 +32,7 @@ export function generatePdfReport({ title, subtitle, columns, rows, summary, fil
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100);
   if (subtitle) doc.text(subtitle, 14, 27);
-  doc.text(`Généré le ${new Date().toLocaleString('fr-FR')}`, pageWidth - 14, 20, { align: 'right' });
+  doc.text(`Généré le ${formatBrazzavilleDateTime(new Date())}`, pageWidth - 14, 20, { align: 'right' });
 
   let startY = subtitle ? 34 : 27;
 
@@ -103,7 +104,7 @@ export function downloadExcelReport({ title, columns, rows, summary, fileName }:
 
   const sheetData: (string | number)[][] = [];
   sheetData.push([title]);
-  sheetData.push([`Généré le ${new Date().toLocaleString('fr-FR')}`]);
+  sheetData.push([`Généré le ${formatBrazzavilleDateTime(new Date())}`]);
   sheetData.push([]);
 
   if (summary && summary.length > 0) {
@@ -138,7 +139,7 @@ export function downloadMultiPdfReport(reports: PdfOptions[], fileName: string) 
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(100);
     if (report.subtitle) doc.text(report.subtitle, 14, 27);
-    doc.text(`Généré le ${new Date().toLocaleString('fr-FR')}`, pageWidth - 14, 20, { align: 'right' });
+    doc.text(`Généré le ${formatBrazzavilleDateTime(new Date())}`, pageWidth - 14, 20, { align: 'right' });
 
     let startY = report.subtitle ? 34 : 27;
 
@@ -183,7 +184,7 @@ export function downloadMultiExcelReport(reports: ExcelOptions[], fileName: stri
   reports.forEach((report) => {
     const sheetData: (string | number)[][] = [];
     sheetData.push([report.title]);
-    sheetData.push([`Généré le ${new Date().toLocaleString('fr-FR')}`]);
+    sheetData.push([`Généré le ${formatBrazzavilleDateTime(new Date())}`]);
     sheetData.push([]);
 
     if (report.summary && report.summary.length > 0) {
