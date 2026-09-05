@@ -9,6 +9,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useOfflineSave, buildSteps } from '@/lib/useOfflineSave';
 import { useSync } from '@/contexts/SyncContext';
+import { brazzavilleToday } from '@/lib/brazzavilleTime';
 import {
   Plus, X, User as UserIcon, Phone, ChefHat, Calendar,
   Edit2, Trash2, Package, PackageX, Flame, AlertTriangle, CheckCircle2,
@@ -50,12 +51,12 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
     baker_id: '', pot_type_id: '', quantity: 0, pots_burned: 0, dough_delivery_id: '',
     madeleines_good: 0, madeleines_burned: 0, madeleines_broken: 0, madeleines_defective: 0,
     dough_used_kg: 0, buckets_used: 0, cakes_baked: 0, pates_count: 0,
-    production_date: new Date().toISOString().slice(0, 10), notes: '',
+    production_date: brazzavilleToday(), notes: '',
   });
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [doughForm, setDoughForm] = useState({
     kneader_id: '', baker_id: '', bucket_count: 1, bucket_weight_kg: 0,
-    delivery_date: new Date().toISOString().slice(0, 10), notes: '', dough_batch_id: '',
+    delivery_date: brazzavilleToday(), notes: '', dough_batch_id: '',
   });
 
   const ispétrisseur = (profile?.role ?? 1) === 9;
@@ -214,7 +215,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
     if (!result.offline) syncNow();
 
     setShowDoughModal(false);
-    setDoughForm({ kneader_id: '', baker_id: '', bucket_count: 1, bucket_weight_kg: 0, delivery_date: new Date().toISOString().slice(0, 10), notes: '', dough_batch_id: '' });
+    setDoughForm({ kneader_id: '', baker_id: '', bucket_count: 1, bucket_weight_kg: 0, delivery_date: brazzavilleToday(), notes: '', dough_batch_id: '' });
     loadAll();
   };
 
@@ -380,7 +381,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
     }
 
     setShowRecordModal(false);
-    setRecordForm({ baker_id: '', pot_type_id: '', quantity: 0, pots_burned: 0, dough_delivery_id: '', madeleines_good: 0, madeleines_burned: 0, madeleines_broken: 0, madeleines_defective: 0, dough_used_kg: 0, buckets_used: 0, cakes_baked: 0, pates_count: 0, production_date: new Date().toISOString().slice(0, 10), notes: '' });
+    setRecordForm({ baker_id: '', pot_type_id: '', quantity: 0, pots_burned: 0, dough_delivery_id: '', madeleines_good: 0, madeleines_burned: 0, madeleines_broken: 0, madeleines_defective: 0, dough_used_kg: 0, buckets_used: 0, cakes_baked: 0, pates_count: 0, production_date: brazzavilleToday(), notes: '' });
     loadAll();
   };
 
@@ -609,7 +610,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
     loadAll();
   };
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = brazzavilleToday();
   const todayRecords = records.filter((r) => r.production_date === todayStr && (filterBaker === 'all' || r.baker_id === filterBaker));
   const todayPots = todayRecords.reduce((s, r) => s + r.quantity, 0);
   const todayPotsBurned = todayRecords.reduce((s, r) => s + (r.pots_burned ?? 0), 0);

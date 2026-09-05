@@ -7,6 +7,7 @@ import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
+import { brazzavilleToday } from '@/lib/brazzavilleTime';
 import {
   Plus, X, Edit2, Trash2, Loader2, Search, Package, FlaskConical,
   AlertTriangle, ChevronDown, ChevronRight, TrendingDown, Calculator, ArrowRight,
@@ -53,7 +54,7 @@ export default function IngredientsPage({ onNavigate }: { onNavigate?: (page: st
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [editingBatch, setEditingBatch] = useState<DoughBatch | null>(null);
   const [batchForm, setBatchForm] = useState({
-    batch_date: new Date().toISOString().slice(0, 10),
+    batch_date: brazzavilleToday(),
     kneader_id: '',
     total_weight_kg: '',
     pates_produced: '',
@@ -163,7 +164,7 @@ export default function IngredientsPage({ onNavigate }: { onNavigate?: (page: st
   // --- Batch CRUD ---
   const openCreateBatch = () => {
     setEditingBatch(null);
-    setBatchForm({ batch_date: new Date().toISOString().slice(0, 10), kneader_id: '', total_weight_kg: '', pates_produced: '', notes: '' });
+    setBatchForm({ batch_date: brazzavilleToday(), kneader_id: '', total_weight_kg: '', pates_produced: '', notes: '' });
     setBatchLines([{ ingredient_id: '', quantity: '' }]);
     setShowBatchModal(true);
   };

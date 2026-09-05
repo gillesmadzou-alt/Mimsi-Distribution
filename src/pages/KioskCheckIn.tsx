@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase, UserRole } from '@/lib/supabase';
 import { cachePageData, getCachedPageData } from '@/lib/readCache';
 import { enqueueJob } from '@/lib/offlineQueue';
+import { brazzavilleToday } from '@/lib/brazzavilleTime';
 import { Truck, Camera, RefreshCw, Check, LogOut, User, Loader2, SwitchCamera, LogIn, LogOut as LogOutIcon, Shield, Mail, Lock, Eye, EyeOff, Clock, ChevronDown } from 'lucide-react';
 
 type Step = 'mode' | 'form' | 'photo' | 'success' | 'manual-arrival';
@@ -61,7 +62,7 @@ export default function KioskCheckIn() {
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
   const [cameraError, setCameraError] = useState<string | null>(null);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = brazzavilleToday();
 
   const loadPeople = useCallback(async () => {
     setPeopleLoading(true);

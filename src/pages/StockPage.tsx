@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import InventoryLedgerPanel from '@/components/InventoryLedgerPanel';
 import EquipmentAssetsPanel from '@/components/EquipmentAssetsPanel';
+import { brazzavilleToday, formatBrazzavilleDateTime } from '@/lib/brazzavilleTime';
 import {
   Plus, Package, AlertTriangle, TrendingUp, TrendingDown, X, Edit2, History, Archive, Disc, Cookie, ArrowRight, CloudOff,
 } from 'lucide-react';
@@ -242,7 +243,7 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
   const showDriverField = movement.movement_type === 'attribution';
   const showBakerField = movement.movement_type === 'entree';
   const showBatchField = movement.movement_type === 'retour';
-  const today = new Date().toISOString().slice(0, 10);
+  const today = brazzavilleToday();
   const todayBatches = batches.filter((batch) => batch.batch_date === today);
   const recentBatches = batches.filter((batch) => batch.batch_date !== today);
 
@@ -575,7 +576,7 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
                           {MOVEMENT_LABELS[m.movement_type] ?? m.movement_type} · {m.pot_type?.name ?? '—'}
                         </p>
                         <p className="text-xs text-gray-500">
-                          {new Date(m.created_at).toLocaleString('fr-FR')}
+                          {formatBrazzavilleDateTime(m.created_at)}
                           {personLabel && ` · ${m.driver ? 'Commercial' : 'Pétrisseur'}: ${personLabel}`}
                           {m.batch && ` · Lot : ${m.batch.batch_code}`}
                           {m.notes ? ` · ${m.notes}` : ''}

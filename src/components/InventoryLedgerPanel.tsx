@@ -4,6 +4,7 @@ import { Ingredient, PotType, supabase } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useOfflineSave, buildSteps } from '@/lib/useOfflineSave';
 import { useToast } from '@/contexts/ToastContext';
+import { brazzavilleToday } from '@/lib/brazzavilleTime';
 
 type Category = 'ingredient' | 'madeleine' | 'ready_pot' | 'empty_pot' | 'lid';
 type Operation = 'initial' | 'entree' | 'sortie' | 'retour';
@@ -58,8 +59,8 @@ export default function InventoryLedgerPanel({ canRecord }: { canRecord: boolean
   const [showSchedule, setShowSchedule] = useState(false);
   const [activeLines, setActiveLines] = useState<InventoryLine[] | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [scheduleForm, setScheduleForm] = useState({ name: 'Inventaire de stock', frequency: 'hebdomadaire', nextInventoryOn: new Date().toISOString().slice(0, 10), categories: Object.keys(CATEGORY) as Category[] });
-  const [form, setForm] = useState({ itemId: '', operation: 'entree' as Operation, quantity: '', notes: '', occurredOn: new Date().toISOString().slice(0, 10) });
+  const [scheduleForm, setScheduleForm] = useState({ name: 'Inventaire de stock', frequency: 'hebdomadaire', nextInventoryOn: brazzavilleToday(), categories: Object.keys(CATEGORY) as Category[] });
+  const [form, setForm] = useState({ itemId: '', operation: 'entree' as Operation, quantity: '', notes: '', occurredOn: brazzavilleToday() });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -108,14 +109,14 @@ export default function InventoryLedgerPanel({ canRecord }: { canRecord: boolean
   }), [category, entries, ingredients, pots, selectedItems]);
 
   const openForm = () => {
-    setForm({ itemId: '', operation: 'entree', quantity: '', notes: '', occurredOn: new Date().toISOString().slice(0, 10) });
+    setForm({ itemId: '', operation: 'entree', quantity: '', notes: '', occurredOn: brazzavilleToday() });
     setShowForm(true);
   };
 
   const downloadReport = () => {
     const content = ['Article;Stock initial;Entrées;Sorties;Stock final', ...rows.map(({ item, initial, entriesTotal, exitsTotal, final }) => `${item.name};${initial ?? ''};${entriesTotal};${exitsTotal};${final}`)].join('\n');
     const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a'); link.href = url; link.download = `rapport-stock-${category}-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
+    const link = document.createElement('a'); link.href = url; link.download = `rapport-stock-${category}-${brazzavilleToday()}.csv`; link.click(); URL.revokeObjectURL(url);
   };
 
   const saveSchedule = async (event: React.FormEvent) => {

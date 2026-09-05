@@ -9,6 +9,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { cachePageData, getCachedPageData } from '@/lib/readCache';
+import { brazzavilleToday } from '@/lib/brazzavilleTime';
 import {
   Plus, Trash2, X, Sparkles, Heart, Search, Phone, MapPin, Calendar,
   TrendingUp, Package, CheckCircle2, Clock, AlertCircle,
@@ -42,7 +43,7 @@ export default function OpportunisticSalesPage() {
     payment_type: 'comptant' as 'comptant' | 'credit',
     customer_name: '',
     customer_phone: '',
-    sale_date: new Date().toISOString().slice(0, 10),
+    sale_date: brazzavilleToday(),
     sale_context: 'standard' as 'standard' | 'fair',
     fair_name: '',
     fair_location: '',
@@ -62,7 +63,7 @@ export default function OpportunisticSalesPage() {
     status: 'en_attente' as WeddingOrderStatus,
     payment_status: 'non_paye' as WeddingPaymentStatus,
     amount_paid_fcfa: 0,
-    order_date: new Date().toISOString().slice(0, 10),
+    order_date: brazzavilleToday(),
     notes: '',
   });
 
@@ -107,7 +108,7 @@ export default function OpportunisticSalesPage() {
     setSaleForm({
       driver_id: '', pot_type_id: '', item_description: '', quantity: 1,
       unit_price_fcfa: 0, payment_type: 'comptant', customer_name: '',
-      customer_phone: '', sale_date: new Date().toISOString().slice(0, 10), notes: '',
+      customer_phone: '', sale_date: brazzavilleToday(), notes: '',
       sale_context: 'standard', fair_name: '', fair_location: '',
     });
   };
@@ -117,7 +118,7 @@ export default function OpportunisticSalesPage() {
       driver_id: '', pot_type_id: '', quantity: 1, unit_price_fcfa: 0,
       bride_name: '', groom_name: '', customer_phone: '', wedding_date: '',
       delivery_address: '', status: 'en_attente', payment_status: 'non_paye',
-      amount_paid_fcfa: 0, order_date: new Date().toISOString().slice(0, 10), notes: '',
+      amount_paid_fcfa: 0, order_date: brazzavilleToday(), notes: '',
     });
   };
 
