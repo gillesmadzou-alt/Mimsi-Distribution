@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Archive, Boxes, CalendarClock, ClipboardList, Cookie, Disc3, Download, Package, Plus, Wheat, X } from 'lucide-react';
+import { Archive, Boxes, CalendarClock, ClipboardList, Cookie, Disc3, Package, Plus, Wheat, X } from 'lucide-react';
 import { Ingredient, PotType, supabase } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useOfflineSave, buildSteps } from '@/lib/useOfflineSave';
 import { useToast } from '@/contexts/ToastContext';
+import { brazzavilleToday } from '@/lib/brazzavilleTime';
 
 type Category = 'ingredient' | 'madeleine' | 'ready_pot' | 'empty_pot' | 'lid';
 type Operation = 'initial' | 'entree' | 'sortie' | 'retour';
@@ -58,8 +59,8 @@ export default function InventoryLedgerPanel({ canRecord }: { canRecord: boolean
   const [showSchedule, setShowSchedule] = useState(false);
   const [activeLines, setActiveLines] = useState<InventoryLine[] | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [scheduleForm, setScheduleForm] = useState({ name: 'Inventaire de stock', frequency: 'hebdomadaire', nextInventoryOn: new Date().toISOString().slice(0, 10), categories: Object.keys(CATEGORY) as Category[] });
-  const [form, setForm] = useState({ itemId: '', operation: 'entree' as Operation, quantity: '', notes: '', occurredOn: new Date().toISOString().slice(0, 10) });
+  const [scheduleForm, setScheduleForm] = useState({ name: 'Inventaire de stock', frequency: 'hebdomadaire', nextInventoryOn: brazzavilleToday(), categories: Object.keys(CATEGORY) as Category[] });
+  const [form, setForm] = useState({ itemId: '', operation: 'entree' as Operation, quantity: '', notes: '', occurredOn: brazzavilleToday() });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -108,14 +109,8 @@ export default function InventoryLedgerPanel({ canRecord }: { canRecord: boolean
   }), [category, entries, ingredients, pots, selectedItems]);
 
   const openForm = () => {
-    setForm({ itemId: '', operation: 'entree', quantity: '', notes: '', occurredOn: new Date().toISOString().slice(0, 10) });
+    setForm({ itemId: '', operation: 'entree', quantity: '', notes: '', occurredOn: brazzavilleToday() });
     setShowForm(true);
-  };
-
-  const downloadReport = () => {
-    const content = ['Article;Stock initial;Entrées;Sorties;Stock final', ...rows.map(({ item, initial, entriesTotal, exitsTotal, final }) => `${item.name};${initial ?? ''};${entriesTotal};${exitsTotal};${final}`)].join('\n');
-    const url = URL.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a'); link.href = url; link.download = `rapport-stock-${category}-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
   };
 
   const saveSchedule = async (event: React.FormEvent) => {
@@ -208,7 +203,7 @@ export default function InventoryLedgerPanel({ canRecord }: { canRecord: boolean
         </table>
       </div>
       <p className="mt-2 text-xs text-gray-500">Le stock initial est défini une fois par article. Le stock final est le stock réellement disponible et se met à jour sur tous les appareils connectés.</p>
-      <div className="mt-3 flex flex-col gap-2 rounded-xl bg-white p-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-gray-700">Rapport : <strong>{config.label}</strong></p><button onClick={downloadReport} className="inline-flex items-center gap-2 text-sm font-semibold text-amber-700"><Download className="h-4 w-4" /> Télécharger le rapport CSV</button></div>
+      <div className="mt-3 rounded-xl bg-white p-3 text-sm text-gray-700">Les rapports de <strong>{config.label}</strong> sont disponibles dans la section <strong>Rapports</strong>, au format PDF ou Excel.</div>
       {schedules.length > 0 && <div className="mt-3 space-y-2">{schedules.map((schedule) => <div key={schedule.id} className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium text-gray-800">{schedule.name}</p><p className="text-xs text-gray-500">{schedule.frequency} · prochain inventaire : {new Date(schedule.next_inventory_on).toLocaleDateString('fr-FR')}</p></div>{canRecord && <button onClick={() => startInventory(schedule)} className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">Ouvrir la fiche</button>}</div>)}</div>}
 
       {showForm && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => setShowForm(false)}><div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>

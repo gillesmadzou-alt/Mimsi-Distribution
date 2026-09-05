@@ -7,6 +7,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
+import { brazzavilleToday } from '@/lib/brazzavilleTime';
 import {
   LogIn, LogOut, Calendar, Users, Search, ChevronLeft, ChevronRight,
   CheckCircle2, XCircle, AlertCircle, Plane, CalendarOff, Trash2, Plus,
@@ -42,7 +43,7 @@ export default function AttendancePage({ onNavigate }: { onNavigate?: (page: str
   const [people, setPeople] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState(() => brazzavilleToday());
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -308,10 +309,10 @@ export default function AttendancePage({ onNavigate }: { onNavigate?: (page: str
   const changeDay = (delta: number) => {
     const d = new Date(selectedDate);
     d.setDate(d.getDate() + delta);
-    setSelectedDate(d.toISOString().slice(0, 10));
+    setSelectedDate(brazzavilleToday(d));
   };
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = brazzavilleToday();
   const isToday = selectedDate === todayStr;
 
   const photoUrl = (path: string) => signedPhotoUrls[path];
