@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback } from 'react';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { TrackingProvider, useTracking } from '@/contexts/TrackingContext';
 import { SyncProvider } from '@/contexts/SyncContext';
@@ -9,40 +9,48 @@ import AppShell, { PageId, NAV_SECTIONS } from '@/components/AppShell';
 import { UserRole, getRoleAccessLevel } from '@/lib/supabase';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 import MandatoryLocationGate from '@/components/MandatoryLocationGate';
-import DashboardPage from '@/pages/DashboardPage';
-import DriversPage from '@/pages/DriversPage';
-import SalesPointsPage from '@/pages/SalesPointsPage';
-import StockPage from '@/pages/StockPage';
-import BatchesPage from '@/pages/BatchesPage';
-import ReturnsPage from '@/pages/ReturnsPage';
-import StatisticsPage from '@/pages/StatisticsPage';
-import JournalPage from '@/pages/JournalPage';
-import ReceivablesPage from '@/pages/ReceivablesPage';
-import ContributionsPage from '@/pages/ContributionsPage';
-import CompliancePage from '@/pages/CompliancePage';
-import ConsignmentsPage from '@/pages/ConsignmentsPage';
-import RestockPage from '@/pages/RestockPage';
-import LeavePage from '@/pages/LeavePage';
-import LeaderboardPage from '@/pages/LeaderboardPage';
-import AuditLogPage from '@/pages/AuditLogPage';
-import ProductionPage from '@/pages/ProductionPage';
-import MapPage from '@/pages/MapPage';
-import OrgChartPage from '@/pages/OrgChartPage';
-import BarcodesPage from '@/pages/BarcodesPage';
-import UsersPage from '@/pages/UsersPage';
-import ApprovalsPage from '@/pages/ApprovalsPage';
-import SchedulingPage from '@/pages/SchedulingPage';
-import IngredientsPage from '@/pages/IngredientsPage';
-import ReportsPage from '@/pages/ReportsPage';
-import ObservationsPage from '@/pages/ObservationsPage';
-import ExpensesPage from '@/pages/ExpensesPage';
-import AttendancePage from '@/pages/AttendancePage';
-import NotificationArchivePage from '@/pages/NotificationArchivePage';
-
-import AnalyticsPage from '@/pages/AnalyticsPage';
-import OpportunisticSalesPage from '@/pages/OpportunisticSalesPage';
 import { Loader2 } from 'lucide-react';
-import KioskCheckIn from '@/pages/KioskCheckIn';
+
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
+const DriversPage = lazy(() => import('@/pages/DriversPage'));
+const SalesPointsPage = lazy(() => import('@/pages/SalesPointsPage'));
+const StockPage = lazy(() => import('@/pages/StockPage'));
+const BatchesPage = lazy(() => import('@/pages/BatchesPage'));
+const ReturnsPage = lazy(() => import('@/pages/ReturnsPage'));
+const StatisticsPage = lazy(() => import('@/pages/StatisticsPage'));
+const JournalPage = lazy(() => import('@/pages/JournalPage'));
+const ReceivablesPage = lazy(() => import('@/pages/ReceivablesPage'));
+const ContributionsPage = lazy(() => import('@/pages/ContributionsPage'));
+const CompliancePage = lazy(() => import('@/pages/CompliancePage'));
+const ConsignmentsPage = lazy(() => import('@/pages/ConsignmentsPage'));
+const RestockPage = lazy(() => import('@/pages/RestockPage'));
+const LeavePage = lazy(() => import('@/pages/LeavePage'));
+const LeaderboardPage = lazy(() => import('@/pages/LeaderboardPage'));
+const AuditLogPage = lazy(() => import('@/pages/AuditLogPage'));
+const ProductionPage = lazy(() => import('@/pages/ProductionPage'));
+const MapPage = lazy(() => import('@/pages/MapPage'));
+const OrgChartPage = lazy(() => import('@/pages/OrgChartPage'));
+const BarcodesPage = lazy(() => import('@/pages/BarcodesPage'));
+const UsersPage = lazy(() => import('@/pages/UsersPage'));
+const ApprovalsPage = lazy(() => import('@/pages/ApprovalsPage'));
+const SchedulingPage = lazy(() => import('@/pages/SchedulingPage'));
+const IngredientsPage = lazy(() => import('@/pages/IngredientsPage'));
+const ReportsPage = lazy(() => import('@/pages/ReportsPage'));
+const ObservationsPage = lazy(() => import('@/pages/ObservationsPage'));
+const ExpensesPage = lazy(() => import('@/pages/ExpensesPage'));
+const AttendancePage = lazy(() => import('@/pages/AttendancePage'));
+const NotificationArchivePage = lazy(() => import('@/pages/NotificationArchivePage'));
+const AnalyticsPage = lazy(() => import('@/pages/AnalyticsPage'));
+const OpportunisticSalesPage = lazy(() => import('@/pages/OpportunisticSalesPage'));
+const KioskCheckIn = lazy(() => import('@/pages/KioskCheckIn'));
+
+function PageLoader() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center" role="status" aria-label="Chargement de la page">
+      <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
+    </div>
+  );
+}
 
 function DriverApp() {
   const { isBlocked } = useTracking();
@@ -147,7 +155,9 @@ function OfficeApp() {
 
   return (
     <AppShell current={page} onNavigate={nav} onBack={goBack} canGoBack={history.length > 0}>
-      {pages[page]}
+      <Suspense fallback={<PageLoader />}>
+        {pages[page]}
+      </Suspense>
     </AppShell>
   );
 }
@@ -164,7 +174,11 @@ function AppContent() {
   }
 
   if (kioskMode) {
-    return <KioskCheckIn />;
+    return (
+      <Suspense fallback={<PageLoader />}>
+        <KioskCheckIn />
+      </Suspense>
+    );
   }
 
   if (!user || !profile) {

@@ -28,6 +28,33 @@ const ROLE_CACHE_KEY = 'mimsi_cached_role';
 
 const PWD_SALT_KEY = 'mimsi_pwd_salt';
 const PBKDF2_ITERATIONS = 200000;
+let precacheInProgress: Promise<void> | null = null;
+
+async function precacheIfNeeded(profile: Profile): Promise<void> {
+  if (precacheInProgress) return precacheInProgress;
+
+  precacheInProgress = (async () => {
+    const needsPrecache = !isPrecacheDone() || Object.keys(await getAllCachedData()).length === 0;
+    if (needsPrecache) {
+      await precacheAllData(undefined, { id: profile.id, role: profile.role });
+    }
+  })();
+
+  try {
+    await precacheInProgress;
+  } finally {
+    precacheInProgress = null;
+  }
+}
+
+function schedulePrecache(profile: Profile): void {
+  const run = () => { void precacheIfNeeded(profile).catch(() => {}); };
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(run, { timeout: 10_000 });
+  } else {
+    globalThis.setTimeout(run, 3_000);
+  }
+}
 
 function toHex(bytes: Uint8Array): string {
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -252,10 +279,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setProfile(prof);
             goOffline(false);
             if (navigator.onLine) {
-              (async () => {
-                const needsPrecache = !isPrecacheDone() || Object.keys(await getAllCachedData()).length === 0;
-                if (needsPrecache) precacheAllData(undefined, { id: prof.id, role: prof.role }).catch(() => {});
-              })();
+              schedulePrecache(prof);
             }
           } else {
             const cached = getCachedProfile();
@@ -286,10 +310,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (prof) {
         setProfile(prof);
         if (navigator.onLine) {
-          (async () => {
-            const needsPrecache = !isPrecacheDone() || Object.keys(await getAllCachedData()).length === 0;
-            if (needsPrecache) precacheAllData(undefined, { id: prof.id, role: prof.role }).catch(() => {});
-          })();
+          schedulePrecache(prof);
         }
         if (!manualOfflineRef.current) goOffline(false);
       }
@@ -380,10 +401,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (prof) {
         setProfile(prof);
         if (navigator.onLine) {
-          (async () => {
-            const needsPrecache = !isPrecacheDone() || Object.keys(await getAllCachedData()).length === 0;
-            if (needsPrecache) precacheAllData(undefined, { id: prof.id, role: prof.role }).catch(() => {});
-          })();
+          schedulePrecache(prof);
         }
       } else {
         const cached = getCachedProfile();
