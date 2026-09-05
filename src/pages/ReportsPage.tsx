@@ -50,6 +50,16 @@ interface EquipmentAsset {
   unit_value_fcfa: number; annual_annuity_fcfa: number; condition: string; location: string | null; notes: string | null;
 }
 
+interface InventorySessionLine {
+  id: string; item_category: string; theoretical_quantity: number; counted_quantity: number | null;
+  pot_type?: { name: string } | null; ingredient?: { name: string } | null;
+}
+
+interface InventorySession {
+  id: string; inventory_date: string; status: 'en_cours' | 'valide'; created_at: string;
+  lines?: InventorySessionLine[];
+}
+
 function buildAttendanceReport(
   records: AttendanceRecord[],
   filterType: 'baker' | 'driver' | 'kneader' | 'admin' | 'other' | 'all',
@@ -173,6 +183,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [potTypes, setPotTypes] = useState<PotType[]>([]);
   const [equipmentAssets, setEquipmentAssets] = useState<EquipmentAsset[]>([]);
+  const [inventorySessions, setInventorySessions] = useState<InventorySession[]>([]);
 
   const { fetchWithCache, isOffline } = useOfflineFetch();
 
@@ -198,7 +209,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
   const loadData = useCallback(async () => {
     setLoading(true);
     const result = await fetchWithCache('reports-page', async () => {
-      const [b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp, pots, equipment] = await Promise.all([
+      const [b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp, pots, equipment, inventories] = await Promise.all([
         supabase.from('delivery_batches').select('*, driver:drivers(*), pot_type:pot_types(*)').order('batch_date', { ascending: false }).limit(500),
         supabase.from('deposits').select('*, sales_point:sales_points(*), batch:delivery_batches(*)').order('deposited_at', { ascending: false }).limit(500),
         supabase.from('returns').select('*, sales_point:sales_points(*), batch:delivery_batches(*)').order('returned_at', { ascending: false }).limit(500),
@@ -216,11 +227,12 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
         supabase.from('quota_payments').select('*').order('payment_date', { ascending: false }).limit(2000),
         supabase.from('pot_types').select('*').eq('is_active', true).order('name'),
         supabase.from('equipment_assets').select('*').eq('is_active', true).order('asset_type').order('name'),
+        supabase.from('inventory_sessions').select('*, lines:inventory_session_lines(*, pot_type:pot_types(name), ingredient:ingredients(name))').order('inventory_date', { ascending: false }).limit(100),
       ]);
-      return { b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp, pots, equipment };
+      return { b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp, pots, equipment, inventories };
     });
     if (result.data) {
-      const { b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp, pots, equipment } = result.data;
+      const { b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp, pots, equipment, inventories } = result.data;
       setAttendanceRecords(att.data ?? []);
       setBatches(b.data ?? []);
       setDeposits(dep.data ?? []);
@@ -238,13 +250,14 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
       setQuotaPayments(qp?.data ?? []);
       setPotTypes((pots.data ?? []) as PotType[]);
       setEquipmentAssets((equipment.data ?? []) as EquipmentAsset[]);
+      setInventorySessions((inventories.data ?? []) as InventorySession[]);
     }
     setLoading(false);
   }, [fetchWithCache]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  useRealtimeSubscription('reports-page', isOffline ? [] : ['delivery_batches', 'deposits', 'returns', 'receivables', 'production_records', 'stock_movements', 'ingredients', 'dough_batches', 'sales_points', 'quota_payments', 'pot_types', 'equipment_assets'], () => { loadData(); });
+  useRealtimeSubscription('reports-page', isOffline ? [] : ['delivery_batches', 'deposits', 'returns', 'receivables', 'production_records', 'stock_movements', 'ingredients', 'dough_batches', 'sales_points', 'quota_payments', 'pot_types', 'equipment_assets', 'inventory_sessions', 'inventory_session_lines'], () => { loadData(); });
 
   const inRange = (dateStr: string) => {
     const d = dateStr.slice(0, 10);
@@ -570,6 +583,40 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
           ],
           rows: equipmentAssets.map((item) => ({ name: item.name, type: item.asset_type === 'outil' ? 'Outil' : 'Matériel', quantity: Number(item.quantity), condition: item.condition.replace(/_/g, ' '), location: item.location ?? '—', unitValue: formatFCFA(Number(item.unit_value_fcfa)), totalValue: formatFCFA(Number(item.quantity) * Number(item.unit_value_fcfa)), annuity: formatFCFA(Number(item.annual_annuity_fcfa)) })),
           summary: [{ label: 'Éléments enregistrés', value: String(equipmentAssets.length) }, { label: 'Valeur totale', value: formatFCFA(totalValue) }, { label: 'Annuité annuelle totale', value: formatFCFA(annualTotal) }],
+        };
+      },
+    },
+    {
+      id: 'inventory-counts',
+      title: 'Rapport des inventaires',
+      description: 'Fiches d’inventaire, stock théorique, comptage et écarts',
+      icon: CheckSquare,
+      roles: [2, 4, 5, 6, 16],
+      build: async () => {
+        const sessions = inventorySessions.filter((session) => inRange(session.inventory_date));
+        const rows = sessions.flatMap((session) => (session.lines ?? []).map((line) => {
+          const counted = line.counted_quantity == null ? null : Number(line.counted_quantity);
+          const theoretical = Number(line.theoretical_quantity);
+          return {
+            date: fmtDate(session.inventory_date), status: session.status === 'valide' ? 'Validé' : 'En cours',
+            category: line.item_category === 'ingredient' ? 'Intrant' : line.item_category === 'ready_pot' ? 'Pots prêts' : line.item_category === 'empty_pot' ? 'Pots vides' : line.item_category === 'lid' ? 'Couvercles' : 'Madeleines',
+            item: line.ingredient?.name ?? line.pot_type?.name ?? '—', theoretical,
+            counted: counted ?? 'Non compté', discrepancy: counted == null ? '—' : counted - theoretical,
+          };
+        }));
+        const countedRows = rows.filter((row) => typeof row.discrepancy === 'number');
+        const discrepantRows = countedRows.filter((row) => row.discrepancy !== 0);
+        return {
+          columns: [
+            { header: 'Date', key: 'date' }, { header: 'Statut', key: 'status' }, { header: 'Nature', key: 'category' },
+            { header: 'Article', key: 'item' }, { header: 'Théorique', key: 'theoretical', align: 'right' as const },
+            { header: 'Compté', key: 'counted', align: 'right' as const }, { header: 'Écart', key: 'discrepancy', align: 'right' as const },
+          ],
+          rows,
+          summary: [
+            { label: 'Fiches d’inventaire', value: String(sessions.length) }, { label: 'Lignes comptées', value: String(countedRows.length) },
+            { label: 'Écarts constatés', value: String(discrepantRows.length) }, { label: 'Période', value: `${fmtDate(fromDate)} — ${fmtDate(toDate)}` },
+          ],
         };
       },
     },
