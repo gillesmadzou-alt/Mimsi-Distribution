@@ -25,46 +25,15 @@ function drawBarcodeOnCanvas(canvas: HTMLCanvasElement, text: string): void {
   }
 }
 
-async function loadLogoAsDataUrl(src: string): Promise<string> {
+async function loadImageAsDataUrl(src: string): Promise<string> {
   const response = await fetch(src);
-  if (!response.ok) throw new Error(`Impossible de charger le logo (${response.status}).`);
+  if (!response.ok) throw new Error(`Impossible de charger l’image (${response.status}).`);
   const blob = await response.blob();
-  const objectUrl = URL.createObjectURL(blob);
-
   return await new Promise<string>((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 900;
-      canvas.height = 600;
-      const context = canvas.getContext('2d');
-      if (!context) {
-        URL.revokeObjectURL(objectUrl);
-        reject(new Error('Préparation du logo impossible.'));
-        return;
-      }
-
-      context.fillStyle = '#ffffff';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(
-        image,
-        image.naturalWidth * 0.2,
-        image.naturalHeight * 0.27,
-        image.naturalWidth * 0.6,
-        image.naturalHeight * 0.4,
-        0,
-        0,
-        canvas.width,
-        canvas.height,
-      );
-      URL.revokeObjectURL(objectUrl);
-      resolve(canvas.toDataURL('image/png'));
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error('Lecture du logo impossible.'));
-    };
-    image.src = objectUrl;
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('Lecture de l’image impossible.'));
+    reader.readAsDataURL(blob);
   });
 }
 
@@ -275,7 +244,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
     setPdfError(null);
 
     try {
-      const logoDataUrl = await loadLogoAsDataUrl('/WhatsApp_Image_2026-07-31_at_19.28.27.jpeg');
+      const labelArtworkDataUrl = await loadImageAsDataUrl('/etiquette-madeleines-mimsi-sans-qr-hd.png');
 
       const today = new Date().toISOString().slice(0, 10);
 
@@ -287,11 +256,13 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const margin = 10;
       const labelWidth = 85;
-      const labelHeight = 60;
+      const artworkHeight = 85;
+      const variablePanelHeight = 28;
+      const labelHeight = artworkHeight + variablePanelHeight;
       const gapX = 5;
-      const gapY = 5;
+      const gapY = 6;
       const cols = 2;
-      const rowsPerPage = 4;
+      const rowsPerPage = 2;
 
       let col = 0;
       let row = 0;
@@ -317,20 +288,30 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
         const x = margin + col * (labelWidth + gapX);
         const y = margin + 10 + row * (labelHeight + gapY);
 
-        doc.setDrawColor(245, 124, 22);
+        doc.setDrawColor(190, 22, 25);
         doc.setLineWidth(0.35);
         doc.roundedRect(x, y, labelWidth, labelHeight, 2, 2, 'S');
 
-        const logoWidth = 36;
-        const logoHeight = 20;
-        doc.addImage(logoDataUrl, 'PNG', x + (labelWidth - logoWidth) / 2, y + 1.5, logoWidth, logoHeight);
+        doc.addImage(labelArtworkDataUrl, 'PNG', x, y, labelWidth, artworkHeight);
+        doc.setFillColor(255, 255, 255);
+        doc.rect(x + 0.35, y + artworkHeight, labelWidth - 0.7, variablePanelHeight - 0.35, 'F');
+        doc.setDrawColor(190, 22, 25);
+        doc.line(x, y + artworkHeight, x + labelWidth, y + artworkHeight);
 
         const potName = (b.pot_type?.name ?? '—').toUpperCase();
-        const hasProductionLot = Boolean(b.production_record_id);
+        const lotCode = b.production_record ? generateLotCode(b.production_record) : null;
+        const panelTop = y + artworkHeight;
         doc.setFont('helvetica', 'bold');
-        doc.setTextColor(45, 52, 54);
-        fitFontSize(doc, potName, labelWidth - 10, 12, 8);
-        doc.text(potName, x + labelWidth / 2, y + (hasProductionLot ? 26 : 28), { align: 'center' });
+        doc.setTextColor(190, 22, 25);
+        fitFontSize(doc, potName, labelWidth - 10, 10, 7);
+        doc.text(potName, x + labelWidth / 2, panelTop + (lotCode ? 4 : 5.5), { align: 'center' });
+
+        if (lotCode) {
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(70, 70, 70);
+          fitFontSize(doc, lotCode, labelWidth - 10, 6, 5);
+          doc.text(lotCode, x + labelWidth / 2, panelTop + 8, { align: 'center' });
+        }
 
         const barcodeCanvas = document.createElement('canvas');
         JsBarcode(barcodeCanvas, b.code, {
@@ -343,14 +324,13 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
           lineColor: '#000000',
         });
         const barcodeData = barcodeCanvas.toDataURL('image/png');
-        // The space between the pot name and the barcode is intentionally
-        // preserved for an optional lot number when that field is introduced.
-        doc.addImage(barcodeData, 'PNG', x + 5, y + 33, labelWidth - 10, 14);
+        const barcodeY = panelTop + (lotCode ? 9.5 : 7.5);
+        doc.addImage(barcodeData, 'PNG', x + 5, barcodeY, labelWidth - 10, 11.5);
 
         doc.setFont('courier', 'normal');
         doc.setTextColor(45, 52, 54);
         fitFontSize(doc, b.code, labelWidth - 10, 8, 6);
-        doc.text(b.code, x + labelWidth / 2, y + 53, { align: 'center' });
+        doc.text(b.code, x + labelWidth / 2, panelTop + 25.5, { align: 'center' });
 
         col++;
         if (col >= cols) { col = 0; row++; }
@@ -359,7 +339,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
       doc.save(`code-barres-${today}-${String(nextNum).padStart(2, '0')}.pdf`);
     } catch (error) {
       console.error('barcode PDF export failed:', error);
-      setPdfError('Impossible de générer le PDF. Vérifiez que le logo est disponible puis réessayez.');
+      setPdfError('Impossible de générer le PDF. Vérifiez que la nouvelle étiquette est disponible puis réessayez.');
     } finally {
       setExportingPdf(false);
     }

@@ -1,10 +1,11 @@
-const CACHE_NAME = 'mimsi-distribution-v85';
+const CACHE_NAME = 'mimsi-distribution-v86';
 const PHOTO_CACHE_NAME = 'mimsi-attendance-photos-v1';
 const PRECACHE_URLS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
   '/WhatsApp_Image_2026-07-31_at_19.28.27.jpeg',
+  '/etiquette-madeleines-mimsi-sans-qr-hd.png',
 ];
 
 self.addEventListener('install', (event) => {
