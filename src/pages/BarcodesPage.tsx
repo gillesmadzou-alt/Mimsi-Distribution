@@ -25,15 +25,61 @@ function drawBarcodeOnCanvas(canvas: HTMLCanvasElement, text: string): void {
   }
 }
 
-async function loadImageAsDataUrl(src: string): Promise<string> {
+async function loadLabelAssets(src: string): Promise<{ labelDataUrl: string; motifDataUrl: string }> {
   const response = await fetch(src);
   if (!response.ok) throw new Error(`Impossible de charger l’image (${response.status}).`);
   const blob = await response.blob();
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error('Lecture de l’image impossible.'));
-    reader.readAsDataURL(blob);
+  const objectUrl = URL.createObjectURL(blob);
+
+  return await new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const labelCanvas = document.createElement('canvas');
+      labelCanvas.width = image.naturalWidth;
+      labelCanvas.height = image.naturalHeight;
+      const labelContext = labelCanvas.getContext('2d');
+      if (!labelContext) {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('Préparation de l’étiquette impossible.'));
+        return;
+      }
+      labelContext.drawImage(image, 0, 0);
+
+      // Extract one of the original madeleine drawings from the lower white band.
+      const cropX = Math.round(image.naturalWidth * 0.06);
+      const cropY = Math.round(image.naturalHeight * 0.95);
+      const cropWidth = Math.round(image.naturalWidth * 0.085);
+      const cropHeight = image.naturalHeight - cropY;
+      const motifCanvas = document.createElement('canvas');
+      motifCanvas.width = cropWidth;
+      motifCanvas.height = cropHeight;
+      const motifContext = motifCanvas.getContext('2d');
+      if (!motifContext) {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('Extraction du motif impossible.'));
+        return;
+      }
+      motifContext.drawImage(image, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+      const motifPixels = motifContext.getImageData(0, 0, cropWidth, cropHeight);
+      for (let index = 0; index < motifPixels.data.length; index += 4) {
+        const red = motifPixels.data[index];
+        const green = motifPixels.data[index + 1];
+        const blue = motifPixels.data[index + 2];
+        if (red > 225 && green > 225 && blue > 225) motifPixels.data[index + 3] = 0;
+      }
+      motifContext.putImageData(motifPixels, 0, 0);
+
+      URL.revokeObjectURL(objectUrl);
+      resolve({
+        labelDataUrl: labelCanvas.toDataURL('image/png'),
+        motifDataUrl: motifCanvas.toDataURL('image/png'),
+      });
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Lecture de l’image impossible.'));
+    };
+    image.src = objectUrl;
   });
 }
 
@@ -47,23 +93,16 @@ function fitFontSize(doc: jsPDF, text: string, maxWidth: number, initialSize: nu
   return size;
 }
 
-function drawMadeleineMotif(doc: jsPDF, centerX: number, centerY: number, width = 6, height = 3.6): void {
-  doc.setDrawColor(242, 194, 197);
-  doc.setLineWidth(0.25);
-  doc.ellipse(centerX, centerY, width / 2, height / 2, 'S');
-  [-1.5, 0, 1.5].forEach((offset) => {
-    doc.line(centerX + offset, centerY - height * 0.3, centerX + offset, centerY + height * 0.3);
-  });
-}
-
-function drawVariablePanelPattern(doc: jsPDF, x: number, y: number, width: number, height: number): void {
+function drawVariablePanelPattern(doc: jsPDF, motifDataUrl: string, x: number, y: number, width: number, height: number): void {
   const motifs = [
-    [x + 4, y + 3], [x + width - 4, y + 3],
-    [x + 3, y + height / 2], [x + width - 3, y + height / 2],
-    [x + 4, y + height - 3], [x + width - 4, y + height - 3],
-    [x + 15, y + 2.5], [x + width - 15, y + 2.5],
+    [x + 0.5, y + 0.8], [x + width - 8, y + 0.8],
+    [x + 0.5, y + 8.8], [x + width - 8, y + 8.8],
+    [x + 0.5, y + height - 5], [x + width - 8, y + height - 5],
+    [x + 11, y + 0.5], [x + width - 18.5, y + 0.5],
   ];
-  motifs.forEach(([motifX, motifY]) => drawMadeleineMotif(doc, motifX, motifY));
+  motifs.forEach(([motifX, motifY], index) => {
+    doc.addImage(motifDataUrl, 'PNG', motifX, motifY, 7.5, 4.5, `madeleine-motif-${index}`, 'FAST');
+  });
 }
 
 function generateCode(index: number, baker1Code?: string, baker2Code?: string): string {
@@ -263,7 +302,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
     setPdfError(null);
 
     try {
-      const labelArtworkDataUrl = await loadImageAsDataUrl('/etiquette-madeleines-mimsi-sans-qr-hd.png');
+      const { labelDataUrl: labelArtworkDataUrl, motifDataUrl } = await loadLabelAssets('/etiquette-madeleines-mimsi-sans-qr-hd.png');
 
       const today = new Date().toISOString().slice(0, 10);
 
@@ -314,7 +353,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
         doc.addImage(labelArtworkDataUrl, 'PNG', x, y, labelWidth, artworkHeight);
         doc.setFillColor(255, 255, 255);
         doc.rect(x + 0.35, y + artworkHeight, labelWidth - 0.7, variablePanelHeight - 0.35, 'F');
-        drawVariablePanelPattern(doc, x, y + artworkHeight, labelWidth, variablePanelHeight);
+        drawVariablePanelPattern(doc, motifDataUrl, x, y + artworkHeight, labelWidth, variablePanelHeight);
         doc.setDrawColor(190, 22, 25);
         doc.line(x, y + artworkHeight, x + labelWidth, y + artworkHeight);
 
