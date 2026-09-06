@@ -47,6 +47,25 @@ function fitFontSize(doc: jsPDF, text: string, maxWidth: number, initialSize: nu
   return size;
 }
 
+function drawMadeleineMotif(doc: jsPDF, centerX: number, centerY: number, width = 6, height = 3.6): void {
+  doc.setDrawColor(242, 194, 197);
+  doc.setLineWidth(0.25);
+  doc.ellipse(centerX, centerY, width / 2, height / 2, 'S');
+  [-1.5, 0, 1.5].forEach((offset) => {
+    doc.line(centerX + offset, centerY - height * 0.3, centerX + offset, centerY + height * 0.3);
+  });
+}
+
+function drawVariablePanelPattern(doc: jsPDF, x: number, y: number, width: number, height: number): void {
+  const motifs = [
+    [x + 4, y + 3], [x + width - 4, y + 3],
+    [x + 3, y + height / 2], [x + width - 3, y + height / 2],
+    [x + 4, y + height - 3], [x + width - 4, y + height - 3],
+    [x + 15, y + 2.5], [x + width - 15, y + 2.5],
+  ];
+  motifs.forEach(([motifX, motifY]) => drawMadeleineMotif(doc, motifX, motifY));
+}
+
 function generateCode(index: number, baker1Code?: string, baker2Code?: string): string {
   const random = Math.random().toString(36).substring(2, 8).toUpperCase();
   const p1 = baker1Code ?? '';
@@ -295,6 +314,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
         doc.addImage(labelArtworkDataUrl, 'PNG', x, y, labelWidth, artworkHeight);
         doc.setFillColor(255, 255, 255);
         doc.rect(x + 0.35, y + artworkHeight, labelWidth - 0.7, variablePanelHeight - 0.35, 'F');
+        drawVariablePanelPattern(doc, x, y + artworkHeight, labelWidth, variablePanelHeight);
         doc.setDrawColor(190, 22, 25);
         doc.line(x, y + artworkHeight, x + labelWidth, y + artworkHeight);
 
