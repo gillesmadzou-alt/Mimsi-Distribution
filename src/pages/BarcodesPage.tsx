@@ -257,7 +257,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
       const margin = 10;
       const labelWidth = 85;
       const artworkHeight = 85;
-      const variablePanelHeight = 28;
+      const variablePanelHeight = 22;
       const labelHeight = artworkHeight + variablePanelHeight;
       const gapX = 5;
       const gapY = 6;
@@ -304,13 +304,13 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(190, 22, 25);
         fitFontSize(doc, potName, labelWidth - 10, 10, 7);
-        doc.text(potName, x + labelWidth / 2, panelTop + (lotCode ? 4 : 5.5), { align: 'center' });
+        doc.text(potName, x + labelWidth / 2, panelTop + (lotCode ? 3.5 : 4.5), { align: 'center' });
 
         if (lotCode) {
           doc.setFont('helvetica', 'normal');
           doc.setTextColor(70, 70, 70);
           fitFontSize(doc, lotCode, labelWidth - 10, 6, 5);
-          doc.text(lotCode, x + labelWidth / 2, panelTop + 8, { align: 'center' });
+          doc.text(lotCode, x + labelWidth / 2, panelTop + 6.5, { align: 'center' });
         }
 
         const barcodeCanvas = document.createElement('canvas');
@@ -324,13 +324,13 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
           lineColor: '#000000',
         });
         const barcodeData = barcodeCanvas.toDataURL('image/png');
-        const barcodeY = panelTop + (lotCode ? 9.5 : 7.5);
-        doc.addImage(barcodeData, 'PNG', x + 5, barcodeY, labelWidth - 10, 11.5);
+        const barcodeY = panelTop + (lotCode ? 7.5 : 6);
+        doc.addImage(barcodeData, 'PNG', x + 5, barcodeY, labelWidth - 10, 9);
 
         doc.setFont('courier', 'normal');
         doc.setTextColor(45, 52, 54);
         fitFontSize(doc, b.code, labelWidth - 10, 8, 6);
-        doc.text(b.code, x + labelWidth / 2, panelTop + 25.5, { align: 'center' });
+        doc.text(b.code, x + labelWidth / 2, panelTop + 20.5, { align: 'center' });
 
         col++;
         if (col >= cols) { col = 0; row++; }
