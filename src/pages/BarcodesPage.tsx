@@ -65,7 +65,11 @@ async function loadLabelAssets(src: string): Promise<{ labelDataUrl: string; mot
         const red = motifPixels.data[index];
         const green = motifPixels.data[index + 1];
         const blue = motifPixels.data[index + 2];
-        if (red > 225 && green > 225 && blue > 225) motifPixels.data[index + 3] = 0;
+        if (red > 225 && green > 225 && blue > 225) {
+          motifPixels.data[index + 3] = 0;
+        } else {
+          motifPixels.data[index + 3] = Math.min(motifPixels.data[index + 3], 70);
+        }
       }
       motifContext.putImageData(motifPixels, 0, 0);
 
@@ -94,15 +98,20 @@ function fitFontSize(doc: jsPDF, text: string, maxWidth: number, initialSize: nu
 }
 
 function drawVariablePanelPattern(doc: jsPDF, motifDataUrl: string, x: number, y: number, width: number, height: number): void {
-  const motifs = [
-    [x + 0.5, y + 0.8], [x + width - 8, y + 0.8],
-    [x + 0.5, y + 8.8], [x + width - 8, y + 8.8],
-    [x + 0.5, y + height - 5], [x + width - 8, y + height - 5],
-    [x + 11, y + 0.5], [x + width - 18.5, y + 0.5],
-  ];
-  motifs.forEach(([motifX, motifY], index) => {
-    doc.addImage(motifDataUrl, 'PNG', motifX, motifY, 7.5, 4.5, `madeleine-motif-${index}`, 'FAST');
-  });
+  const motifWidth = 6.5;
+  const motifHeight = 3.9;
+  const columns = 10;
+  const rows = Math.max(1, Math.ceil((height - 0.8) / 5.4));
+  for (let row = 0; row < rows; row++) {
+    const offsetX = row % 2 === 0 ? 0 : 4.25;
+    for (let column = 0; column < columns; column++) {
+      const motifX = x + offsetX + column * 8.5;
+      const motifY = y + 0.8 + row * 5.4;
+      if (motifX + motifWidth <= x + width) {
+        doc.addImage(motifDataUrl, 'PNG', motifX, motifY, motifWidth, motifHeight, 'madeleine-motif', 'FAST');
+      }
+    }
+  }
 }
 
 function generateCode(index: number, baker1Code?: string, baker2Code?: string): string {
@@ -354,8 +363,6 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
         doc.setFillColor(255, 255, 255);
         doc.rect(x + 0.35, y + artworkHeight, labelWidth - 0.7, variablePanelHeight - 0.35, 'F');
         drawVariablePanelPattern(doc, motifDataUrl, x, y + artworkHeight, labelWidth, variablePanelHeight);
-        doc.setDrawColor(190, 22, 25);
-        doc.line(x, y + artworkHeight, x + labelWidth, y + artworkHeight);
 
         const potName = (b.pot_type?.name ?? '—').toUpperCase();
         const lotCode = b.production_record ? generateLotCode(b.production_record) : null;
