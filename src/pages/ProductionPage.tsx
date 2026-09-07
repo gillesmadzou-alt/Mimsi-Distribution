@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { supabase, Baker, ProductionRecord, PotType, Profile, Kneader, DoughDelivery, DoughBatch, PersonnelChangeRequest, MADELEINES_PER_PATE, MADELEINE_VARIANCE_TOLERANCE_PCT, PATE_WEIGHT_KG } from '@/lib/supabase';
+import { supabase, Baker, ProductionRecord, PotType, Profile, Kneader, DoughDelivery, DoughBatch, PersonnelChangeRequest, MADELEINES_PER_PATE, MADELEINE_VARIANCE_TOLERANCE_PCT, PATE_WEIGHT_KG, getRoleAccessLevel } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { getCachedPageData, cachePageData } from '@/lib/readCache';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
@@ -60,9 +60,9 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
   });
 
   const ispétrisseur = (profile?.role ?? 1) === 9;
-  const isKneader = (profile?.role ?? 1) === 8;
-  const canManage = (profile?.role ?? 1) >= 2;
-  const canManageBakers = (profile?.role ?? 1) >= 4 && !ispétrisseur && !isKneader;
+  const isKneader = (profile?.role ?? 1) === 15;
+  const canManage = getRoleAccessLevel(profile?.role ?? 1) >= 2;
+  const canManageBakers = getRoleAccessLevel(profile?.role ?? 1) >= 4 && !ispétrisseur && !isKneader;
   const canCreateRecord = canManage && !isKneader;
   const isDirectrice = (profile?.role ?? 1) === 5;
   const isAdjoint = (profile?.role ?? 1) === 4;
@@ -707,28 +707,18 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
             {isKneader ? 'Enregistrer ma livraison' : 'Nouvelle livraison'}
           </button>
         )}
-        {canManageBakers && tab === 'bakers' && (
-          <button onClick={async () => {
-            setEditingBaker(null);
-            setBakerForm({ full_name: '', phone: '', status: 'actif', notes: '', profile_id: '' });
-            await fetchProfiles(9);
-            setShowBakerModal(true);
-          }}
+        {isAdmin && tab === 'bakers' && (
+          <button onClick={() => onNavigate?.('users')}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-md hover:shadow-lg transition-all">
             <Plus className="w-5 h-5" />
-            Nouveau fournier
+            Ajouter via Personnel
           </button>
         )}
-        {canManageBakers && tab === 'kneaders' && (
-          <button onClick={async () => {
-            setEditingKneader(null);
-            setKneaderForm({ full_name: '', phone: '', status: 'actif', notes: '', profile_id: '' });
-            await fetchProfiles(8);
-            setShowKneaderModal(true);
-          }}
+        {isAdmin && tab === 'kneaders' && (
+          <button onClick={() => onNavigate?.('users')}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-md hover:shadow-lg transition-all">
             <Plus className="w-5 h-5" />
-            Nouveau pétrisseur
+            Ajouter via Personnel
           </button>
         )}
       </div>
@@ -1035,7 +1025,7 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
                       <button onClick={async () => {
                         setEditingKneader(kneader);
                         setKneaderForm({ full_name: kneader.full_name, phone: kneader.phone ?? '', status: kneader.status, notes: kneader.notes ?? '', profile_id: kneader.profile_id ?? '' });
-                        await fetchProfiles(8);
+                        await fetchProfiles(15);
                         setShowKneaderModal(true);
                       }}
                         className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">

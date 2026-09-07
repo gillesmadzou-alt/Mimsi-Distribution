@@ -21,6 +21,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -29,6 +30,7 @@ export default function UsersPage() {
   const [newUser, setNewUser] = useState({
     fullName: '',
     email: '',
+    phone: '',
     password: '',
     role: 1 as UserRole,
   });
@@ -78,6 +80,7 @@ export default function UsersPage() {
             password: newUser.password,
             fullName: newUser.fullName,
             role: newUser.role,
+            phone: newUser.phone,
           }),
         }
       );
@@ -89,7 +92,7 @@ export default function UsersPage() {
         setError(result.error || 'Erreur lors de la création du compte.');
       } else {
         setSuccess(`Compte créé pour ${newUser.fullName} (${ROLE_LABELS[newUser.role]}). Identifiant : ${emailFromFullName(newUser.fullName)}`);
-        setNewUser({ fullName: '', email: '', password: '', role: 1 });
+        setNewUser({ fullName: '', email: '', phone: '', password: '', role: 1 });
         setShowForm(false);
         fetchProfiles();
       }
@@ -110,18 +113,22 @@ export default function UsersPage() {
     }
   };
 
-  const filtered = profiles.filter((p) =>
-    p.full_name.toLowerCase().includes(search.toLowerCase()) ||
-    p.role.toString().includes(search)
-  );
+  const filtered = profiles.filter((p) => {
+    const query = search.trim().toLowerCase();
+    const matchesSearch = !query
+      || p.full_name.toLowerCase().includes(query)
+      || ROLE_LABELS[p.role].toLowerCase().includes(query)
+      || (p.phone ?? '').includes(query);
+    return matchesSearch && (roleFilter === 'all' || p.role === roleFilter);
+  });
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Gestion des utilisateurs</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Gestion du personnel</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Créez et gérez les comptes des membres de l'équipe. Réservé à l'administrateur.
+            Ajoutez tout le personnel au même endroit. Les fiches commerciales et de production sont créées automatiquement.
           </p>
         </div>
         <button
@@ -129,7 +136,7 @@ export default function UsersPage() {
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-md hover:shadow-lg transition-all"
         >
           <UserPlus className="w-4 h-4" />
-          Nouvel utilisateur
+          Ajouter un membre
         </button>
       </div>
 
@@ -140,15 +147,28 @@ export default function UsersPage() {
         <div className="text-sm text-green-600 bg-green-50 border border-green-200 rounded-xl p-3">{success}</div>
       )}
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-        <input
-          type="text"
-          placeholder="Rechercher par nom ou rôle…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none transition-all"
-        />
+      <div className="grid gap-3 sm:grid-cols-[1fr_240px]">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Rechercher par nom, fonction ou téléphone…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none transition-all"
+          />
+        </div>
+        <select
+          value={roleFilter}
+          onChange={(e) => setRoleFilter(e.target.value === 'all' ? 'all' : Number(e.target.value) as UserRole)}
+          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
+          aria-label="Filtrer le personnel par fonction"
+        >
+          <option value="all">Toutes les fonctions ({profiles.length})</option>
+          {Object.entries(ROLE_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
       </div>
 
       {loading ? (
@@ -158,7 +178,7 @@ export default function UsersPage() {
       ) : isOffline && profiles.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-gray-400">
           <CloudOff className="w-12 h-12 mb-3 text-gray-300" />
-          <p className="text-sm">Aucune donnée hors ligne. Connectez-vous à Internet au moins une fois pour charger les utilisateurs.</p>
+          <p className="text-sm">Aucune donnée hors ligne. Connectez-vous à Internet au moins une fois pour charger le personnel.</p>
         </div>
       ) : (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
@@ -180,7 +200,10 @@ export default function UsersPage() {
                       <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-semibold text-sm">
                         {p.full_name.charAt(0).toUpperCase()}
                       </div>
-                      <span className="text-sm font-medium text-gray-900">{p.full_name}</span>
+                      <div>
+                        <span className="block text-sm font-medium text-gray-900">{p.full_name}</span>
+                        {p.phone && <span className="block text-xs text-gray-400">{p.phone}</span>}
+                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-3">
@@ -221,7 +244,7 @@ export default function UsersPage() {
             </tbody>
           </table>
           {filtered.length === 0 && (
-            <div className="text-center py-12 text-gray-400 text-sm">Aucun utilisateur trouvé.</div>
+            <div className="text-center py-12 text-gray-400 text-sm">Aucun membre du personnel trouvé.</div>
           )}
         </div>
       )}
@@ -230,7 +253,7 @@ export default function UsersPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-[scaleIn_180ms_ease-out]">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-gray-900">Créer un nouvel utilisateur</h3>
+              <h3 className="text-lg font-bold text-gray-900">Ajouter un membre du personnel</h3>
               <button
                 onClick={() => setShowForm(false)}
                 className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
@@ -252,6 +275,16 @@ export default function UsersPage() {
                     placeholder="PAMBOU Estelle"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Téléphone (facultatif)</label>
+                <input
+                  type="tel"
+                  value={newUser.phone}
+                  onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none transition-all"
+                  placeholder="Numéro de téléphone"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Identifiant e-mail généré</label>
@@ -284,7 +317,7 @@ export default function UsersPage() {
                 <p className="text-xs text-gray-400 mt-1">L'utilisateur pourra le changer après sa première connexion.</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Rôle</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Fonction</label>
                 <select
                   value={newUser.role}
                   onChange={(e) => setNewUser({ ...newUser, role: Number(e.target.value) as UserRole })}
@@ -304,7 +337,7 @@ export default function UsersPage() {
                 className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-lg hover:shadow-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {creating && <Loader2 className="w-5 h-5 animate-spin" />}
-                Créer le compte
+                Ajouter au personnel
               </button>
             </form>
           </div>

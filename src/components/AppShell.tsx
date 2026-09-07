@@ -107,7 +107,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Administration',
     items: [
-      { id: 'users', label: 'Utilisateurs', description: 'Création et gestion des comptes utilisateurs', icon: UserCog, minRole: 6, allowedRoles: [6] },
+      { id: 'users', label: 'Personnel', description: 'Ajout et gestion centralisée de tout le personnel', icon: UserCog, minRole: 6, allowedRoles: [6] },
       { id: 'approvals', label: 'Approbations personnel', description: 'Validation des demandes de modification du personnel', icon: ShieldCheck, minRole: 4 },
     ],
   },

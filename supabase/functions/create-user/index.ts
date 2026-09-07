@@ -79,12 +79,12 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(req, { error: "Accès refusé — administrateur uniquement" }, 403);
     }
 
-    const { password, fullName, role } = await req.json();
+    const { password, fullName, role, phone } = await req.json();
     if (!password || !fullName || role === undefined) {
       return jsonResponse(req, { error: "Nom, mot de passe et rôle sont obligatoires." }, 400);
     }
 
-    const allowedRoles = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16];
+    const allowedRoles = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
     if (!allowedRoles.includes(role)) {
       return jsonResponse(req, { error: "Rôle non autorisé" }, 400);
     }
@@ -119,6 +119,7 @@ Deno.serve(async (req: Request) => {
       id: newUser.user.id,
       full_name: fullName,
       role,
+      phone: phone?.trim() || null,
       is_active: true,
     });
 
@@ -126,6 +127,32 @@ Deno.serve(async (req: Request) => {
       await serviceClient.auth.admin.deleteUser(newUser.user.id);
       console.error("profile insert error:", profileInsertError.message);
       return jsonResponse(req, { error: "Impossible de créer le profil. Réessayez." }, 400);
+    }
+
+    let operationalError: { message: string } | null = null;
+    if ([1, 10, 11].includes(role)) {
+      const { error } = await serviceClient.from("drivers").insert({
+        user_id: newUser.user.id, full_name: fullName, phone_primary: phone?.trim() || "",
+        zone: "", status: "actif", vehicle_type: "moto",
+      });
+      operationalError = error;
+    } else if (role === 9) {
+      const { error } = await serviceClient.from("bakers").insert({
+        profile_id: newUser.user.id, full_name: fullName, phone: phone?.trim() || null, status: "actif",
+      });
+      operationalError = error;
+    } else if (role === 15) {
+      const { error } = await serviceClient.from("kneaders").insert({
+        profile_id: newUser.user.id, full_name: fullName, phone: phone?.trim() || null, status: "actif",
+      });
+      operationalError = error;
+    }
+
+    if (operationalError) {
+      await serviceClient.from("profiles").delete().eq("id", newUser.user.id);
+      await serviceClient.auth.admin.deleteUser(newUser.user.id);
+      console.error("operational personnel insert error:", operationalError.message);
+      return jsonResponse(req, { error: "Impossible de créer la fiche métier du personnel." }, 400);
     }
 
     return jsonResponse(req, { success: true, userId: newUser.user.id, email }, 200);

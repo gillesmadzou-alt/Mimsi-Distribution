@@ -96,7 +96,7 @@ const MANUAL_GROUPS: ManualGroup[] = [
         title: 'Connexion',
         content: [
           'Saisissez votre adresse email et votre mot de passe sur la page de connexion.',
-          'Si vous n\'avez pas de compte, contactez un administrateur (role 6) qui pourra vous creer un compte depuis la page Utilisateurs.',
+          'Si vous n\'avez pas de compte, contactez un administrateur (role 6) qui pourra vous ajouter depuis la page Personnel.',
           'La connexion fonctionne egalement hors ligne si vous vous etes deja connecte au moins une fois en ligne. Votre profil et votre mot de passe sont mis en cache securiseement.',
           'Au retour d\'une connexion hors ligne, votre profil est automatiquement revalide pour s\'assurer qu\'il est a jour.',
         ],
@@ -387,9 +387,9 @@ const MANUAL_GROUPS: ManualGroup[] = [
     sections: [
       {
         id: 'users',
-        title: 'Utilisateurs',
+        title: 'Personnel',
         content: [
-          'Creez et geerez les comptes utilisateurs. Attribuez un role a chaque utilisateur pour definir ses acces.',
+          'Ajoutez et gerez tout le personnel au meme endroit. La fonction attribuee determine les pages et operations accessibles.',
           'Les roles determinent les pages accessibles et les actions autorisees.',
           'Un utilisateur peut etre active ou desactive sans etre supprime.',
         ],

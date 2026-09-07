@@ -76,13 +76,13 @@ const ROLE_META: Record<number, { title: string; icon: typeof Crown; color: stri
   6: { title: 'Administrateur', icon: ShieldCheck, color: 'text-rose-700', bgColor: 'bg-rose-50', borderColor: 'border-rose-200' },
   7: { title: 'Directrice Commerciale', icon: Users, color: 'text-blue-700', bgColor: 'bg-blue-50', borderColor: 'border-blue-200' },
   8: { title: 'Responsable de production', icon: ChefHat, color: 'text-orange-700', bgColor: 'bg-orange-50', borderColor: 'border-orange-200' },
-  9: { title: 'Fournier', icon: Flame, color: 'text-red-700', bgColor: 'bg-red-50', borderColor: 'border-red-200' },
+  9: { title: 'Pétrisseur', icon: Flame, color: 'text-red-700', bgColor: 'bg-red-50', borderColor: 'border-red-200' },
   10: { title: 'commercial', icon: Car, color: 'text-slate-700', bgColor: 'bg-slate-50', borderColor: 'border-slate-200' },
   11: { title: 'commercial externe', icon: Car, color: 'text-slate-600', bgColor: 'bg-slate-50', borderColor: 'border-slate-300' },
   12: { title: 'Agent de sécurité', icon: ShieldAlert, color: 'text-indigo-700', bgColor: 'bg-indigo-50', borderColor: 'border-indigo-200' },
   13: { title: 'Plongeuse', icon: Droplets, color: 'text-sky-700', bgColor: 'bg-sky-50', borderColor: 'border-sky-200' },
   14: { title: 'Femme de ménage', icon: Sparkles, color: 'text-teal-700', bgColor: 'bg-teal-50', borderColor: 'border-teal-200' },
-  15: { title: 'Pétrisseur', icon: Droplets, color: 'text-amber-800', bgColor: 'bg-amber-50', borderColor: 'border-amber-300' },
+  15: { title: 'Fournier', icon: Droplets, color: 'text-amber-800', bgColor: 'bg-amber-50', borderColor: 'border-amber-300' },
   16: { title: 'Assistant en gestion de stock', icon: Package, color: 'text-cyan-700', bgColor: 'bg-cyan-50', borderColor: 'border-cyan-200' },
 };
 

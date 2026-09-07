@@ -5,7 +5,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-export type UserRole = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 16;
+export type UserRole = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16;
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   1: 'Commercial',
@@ -22,13 +22,19 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   12: 'Agent de sécurité',
   13: 'Plongeuse',
   14: 'Femme de ménage',
+  15: 'Fournier',
   16: 'Assistant en gestion de stock',
 };
 
 // This is a distinct job title while keeping only stock-manager operational access.
 // Access checks must not let this identifier inherit director or admin permissions.
 export function getRoleAccessLevel(role: UserRole | number): number {
-  return Number(role) === 16 ? 2 : Number(role);
+  const value = Number(role);
+  if ([1, 10, 11, 12, 13, 14].includes(value)) return 1;
+  if ([2, 9, 15, 16].includes(value)) return 2;
+  if (value === 3) return 3;
+  if ([4, 7, 8].includes(value)) return 4;
+  return value;
 }
 
 export interface Profile {

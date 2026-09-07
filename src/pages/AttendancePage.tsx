@@ -83,7 +83,7 @@ export default function AttendancePage({ onNavigate }: { onNavigate?: (page: str
 
     const kneadersList: Person[] = ((kneadersRes.data as Kneader[]) ?? [])
       .filter((k) => k.status === 'actif')
-      .map((k) => ({ id: k.id, full_name: k.full_name, role: 8 as UserRole, type: 'kneader' as const, status: k.status }));
+      .map((k) => ({ id: k.id, full_name: k.full_name, role: 15 as UserRole, type: 'kneader' as const, status: k.status }));
 
     return deduplicatePeople([...profilesList, ...driversList, ...bakersList, ...kneadersList]);
     });

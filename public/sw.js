@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mimsi-distribution-v92';
+const CACHE_NAME = 'mimsi-distribution-v93';
 const PHOTO_CACHE_NAME = 'mimsi-attendance-photos-v1';
 const PRECACHE_URLS = [
   '/',

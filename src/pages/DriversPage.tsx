@@ -76,15 +76,6 @@ export default function DriversPage({ onNavigate }: { onNavigate?: (page: string
     d.phone_primary.includes(search)
   );
 
-  const openCreate = () => {
-    setEditing(null);
-    setForm({
-      full_name: '', phone_primary: '', phone_secondary: '', address: '',
-      zone: '', vehicle_type: 'moto', status: 'actif', hire_date: new Date().toISOString().slice(0, 10),
-    });
-    setShowModal(true);
-  };
-
   const openEdit = (driver: Driver) => {
     setEditing(driver);
     setForm({
@@ -277,13 +268,13 @@ export default function DriversPage({ onNavigate }: { onNavigate?: (page: string
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none"
           />
         </div>
-        {canRequest && (
+        {isAdmin && (
           <button
-            onClick={openCreate}
+            onClick={() => onNavigate?.('users')}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-md hover:shadow-lg transition-all"
           >
             <Plus className="w-5 h-5" />
-            Nouveau commercial
+            Ajouter via Personnel
           </button>
         )}
       </div>
