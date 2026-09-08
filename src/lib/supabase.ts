@@ -644,13 +644,14 @@ export interface DepositBarcodeLink {
   };
 }
 
-export type SchedulePersonType = 'driver' | 'baker' | 'kneader';
+export type SchedulePersonType = 'driver' | 'baker' | 'kneader' | 'profile';
 export type ScheduleStatus = 'planifie' | 'en_cours' | 'termine' | 'annule';
 
 export const SCHEDULE_PERSON_LABELS: Record<SchedulePersonType, string> = {
   driver: 'Commercial',
   baker: 'Pétrisseur',
   kneader: 'Pétrisseur',
+  profile: 'Autre personnel',
 };
 
 export const SCHEDULE_STATUS_LABELS: Record<ScheduleStatus, string> = {
@@ -672,6 +673,7 @@ export interface WorkSchedule {
   person_type: SchedulePersonType;
   person_id: string;
   person_name: string;
+  person_role: UserRole | null;
   work_date: string;
   start_time: string | null;
   end_time: string | null;

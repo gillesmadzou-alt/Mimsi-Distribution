@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { supabase, WorkSchedule, SchedulePersonType, ScheduleStatus, SCHEDULE_PERSON_LABELS, SCHEDULE_STATUS_META, LeavePeriod, LeaveStatus, LEAVE_STATUS_META } from '@/lib/supabase';
+import { supabase, WorkSchedule, SchedulePersonType, ScheduleStatus, SCHEDULE_PERSON_LABELS, SCHEDULE_STATUS_META, LeavePeriod, LEAVE_STATUS_META, ROLE_LABELS, UserRole, getRoleAccessLevel } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useAuth } from '@/contexts/AuthContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
@@ -14,18 +14,21 @@ interface PersonOption {
   full_name: string;
   type: SchedulePersonType;
   profile_id: string | null;
+  role: UserRole;
 }
 
 const PERSON_ICONS: Record<SchedulePersonType, typeof Truck> = {
   driver: Truck,
   baker: ChefHat,
   kneader: User,
+  profile: UserCheck,
 };
 
 const PERSON_COLORS: Record<SchedulePersonType, string> = {
   driver: 'from-amber-400 to-orange-500',
   baker: 'from-rose-400 to-red-500',
   kneader: 'from-violet-400 to-purple-500',
+  profile: 'from-sky-400 to-blue-500',
 };
 
 function formatDate(d: Date): string {
@@ -72,7 +75,7 @@ export default function SchedulingPage({ onNavigate }: { onNavigate?: (page: str
     notes: '',
   });
 
-  const canEdit = (profile?.role ?? 1) >= 2;
+  const canEdit = getRoleAccessLevel(profile?.role ?? 1, profile?.access_level) >= 2;
 
   // Check if a person is on leave on a given date
   const getLeaveFor = useCallback((personId: string, personType: SchedulePersonType, date: string): LeavePeriod | null => {
@@ -87,18 +90,29 @@ export default function SchedulingPage({ onNavigate }: { onNavigate?: (page: str
   }, [people, leaves]);
 
   const loadPeople = useCallback(async () => {
-    const result = await fetchWithCache<PersonOption[]>('scheduling_page_people', async () => {
-      const [driversRes, bakersRes, kneadersRes] = await Promise.all([
-        supabase.from('drivers').select('id, full_name').order('full_name'),
-        supabase.from('bakers').select('id, full_name, profile_id').order('full_name'),
-        supabase.from('kneaders').select('id, full_name, profile_id').order('full_name'),
+    const result = await fetchWithCache<PersonOption[]>('scheduling_page_people_v2', async () => {
+      const [profilesRes, driversRes, bakersRes, kneadersRes] = await Promise.all([
+        supabase.from('profiles').select('id, full_name, role').eq('is_active', true).order('full_name'),
+        supabase.from('drivers').select('id, user_id, full_name').eq('status', 'actif').order('full_name'),
+        supabase.from('bakers').select('id, full_name, profile_id').eq('status', 'actif').order('full_name'),
+        supabase.from('kneaders').select('id, full_name, profile_id').eq('status', 'actif').order('full_name'),
+      ]);
+      const profiles = profilesRes.data ?? [];
+      const rolesByProfileId = new Map(profiles.map((p) => [p.id, p.role as UserRole]));
+      const linkedProfileIds = new Set<string>([
+        ...(driversRes.data ?? []).map((d) => d.user_id).filter((id): id is string => Boolean(id)),
+        ...(bakersRes.data ?? []).map((b) => b.profile_id).filter((id): id is string => Boolean(id)),
+        ...(kneadersRes.data ?? []).map((k) => k.profile_id).filter((id): id is string => Boolean(id)),
       ]);
       const list: PersonOption[] = [
-        ...(driversRes.data ?? []).map((d) => ({ id: d.id, full_name: d.full_name, type: 'driver' as const, profile_id: null })),
-        ...(bakersRes.data ?? []).map((b) => ({ id: b.id, full_name: b.full_name, type: 'baker' as const, profile_id: b.profile_id })),
-        ...(kneadersRes.data ?? []).map((k) => ({ id: k.id, full_name: k.full_name, type: 'kneader' as const, profile_id: k.profile_id })),
+        ...(driversRes.data ?? []).map((d) => ({ id: d.id, full_name: d.full_name, type: 'driver' as const, profile_id: d.user_id, role: rolesByProfileId.get(d.user_id ?? '') ?? 1 })),
+        ...(bakersRes.data ?? []).map((b) => ({ id: b.id, full_name: b.full_name, type: 'baker' as const, profile_id: b.profile_id, role: rolesByProfileId.get(b.profile_id ?? '') ?? 9 })),
+        ...(kneadersRes.data ?? []).map((k) => ({ id: k.id, full_name: k.full_name, type: 'kneader' as const, profile_id: k.profile_id, role: rolesByProfileId.get(k.profile_id ?? '') ?? 15 })),
+        ...profiles
+          .filter((p) => !linkedProfileIds.has(p.id))
+          .map((p) => ({ id: p.id, full_name: p.full_name, type: 'profile' as const, profile_id: p.id, role: p.role as UserRole })),
       ];
-      return list;
+      return list.sort((a, b) => a.full_name.localeCompare(b.full_name));
     });
     if (result.data) setPeople(result.data);
   }, [fetchWithCache]);
@@ -132,7 +146,10 @@ export default function SchedulingPage({ onNavigate }: { onNavigate?: (page: str
 
   useEffect(() => { loadPeople(); }, [loadPeople]);
   useEffect(() => { loadSchedules(); }, [loadSchedules]);
-  useRealtimeSubscription('scheduling-page', isOffline ? [] : ['work_schedules', 'leave_periods', 'drivers', 'bakers', 'kneaders'], loadSchedules);
+  useRealtimeSubscription('scheduling-page', isOffline ? [] : ['work_schedules', 'leave_periods', 'profiles', 'drivers', 'bakers', 'kneaders'], () => {
+    loadPeople();
+    loadSchedules();
+  });
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekRef, i));
   const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
@@ -211,12 +228,13 @@ export default function SchedulingPage({ onNavigate }: { onNavigate?: (page: str
         ...basePayload,
         person_id: form.person_ids[0],
         person_name: person?.full_name ?? editing.person_name,
+        person_role: person?.role ?? editing.person_role,
         updated_at: new Date().toISOString(),
       }).eq('id', editing.id);
     } else {
       const rows = form.person_ids.map((pid) => {
         const person = people.find((p) => p.id === pid);
-        return { ...basePayload, person_id: pid, person_name: person?.full_name ?? '' };
+        return { ...basePayload, person_id: pid, person_name: person?.full_name ?? '', person_role: person?.role ?? null };
       });
       await supabase.from('work_schedules').insert(rows);
     }
@@ -377,7 +395,7 @@ export default function SchedulingPage({ onNavigate }: { onNavigate?: (page: str
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-semibold text-gray-900 truncate">{s.person_name}</p>
-                            <p className="text-[10px] text-gray-500">{SCHEDULE_PERSON_LABELS[s.person_type]}</p>
+                            <p className="text-[10px] text-gray-500">{s.person_role ? ROLE_LABELS[s.person_role] : SCHEDULE_PERSON_LABELS[s.person_type]}</p>
                           </div>
                           <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${meta.bgColor} ${meta.color}`}>
                             {meta.label}
@@ -427,8 +445,8 @@ export default function SchedulingPage({ onNavigate }: { onNavigate?: (page: str
 
       {/* Summary cards */}
       {!loading && (
-        <div className="grid grid-cols-3 gap-3 pt-2">
-          {(['driver', 'baker', 'kneader'] as SchedulePersonType[]).map((type) => {
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+          {(['driver', 'baker', 'kneader', 'profile'] as SchedulePersonType[]).map((type) => {
             const Icon = PERSON_ICONS[type];
             const count = schedules.filter((s) => s.person_type === type && (filterType === 'all' || filterType === type)).length;
             return (
@@ -529,7 +547,10 @@ export default function SchedulingPage({ onNavigate }: { onNavigate?: (page: str
                             }
                           }}
                         />
-                        <span className="text-sm text-gray-700 flex-1">{p.full_name}</span>
+                        <span className="text-sm text-gray-700 flex-1">
+                          {p.full_name}
+                          <span className="block text-[10px] text-gray-400">{ROLE_LABELS[p.role]}</span>
+                        </span>
                         {personLeave && (
                           <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${LEAVE_STATUS_META[personLeave.status].bgColor} ${LEAVE_STATUS_META[personLeave.status].color} flex items-center gap-1`}>
                             <AlertTriangle className="w-2.5 h-2.5" />
