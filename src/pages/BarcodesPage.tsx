@@ -25,7 +25,7 @@ function drawBarcodeOnCanvas(canvas: HTMLCanvasElement, text: string): void {
   }
 }
 
-async function loadLabelAssets(src: string): Promise<{ labelDataUrl: string; motifDataUrl: string }> {
+async function loadLabelAssets(src: string): Promise<{ labelDataUrl: string; patternBandDataUrl: string; patternBandRatio: number }> {
   const response = await fetch(src);
   if (!response.ok) throw new Error(`Impossible de charger l’image (${response.status}).`);
   const blob = await response.blob();
@@ -45,38 +45,28 @@ async function loadLabelAssets(src: string): Promise<{ labelDataUrl: string; mot
       }
       labelContext.drawImage(image, 0, 0);
 
-      // Extract one of the original madeleine drawings from the lower white band.
-      const cropX = Math.round(image.naturalWidth * 0.06);
-      const cropY = Math.round(image.naturalHeight * 0.95);
-      const cropWidth = Math.round(image.naturalWidth * 0.085);
+      // Reuse the complete original lower frieze so the extension keeps the
+      // exact motif shapes, scale and stroke weight of the printed artwork.
+      const cropX = 0;
+      const cropY = Math.round(image.naturalHeight * 0.952);
+      const cropWidth = image.naturalWidth;
       const cropHeight = image.naturalHeight - cropY;
-      const motifCanvas = document.createElement('canvas');
-      motifCanvas.width = cropWidth;
-      motifCanvas.height = cropHeight;
-      const motifContext = motifCanvas.getContext('2d');
-      if (!motifContext) {
+      const patternBandCanvas = document.createElement('canvas');
+      patternBandCanvas.width = cropWidth;
+      patternBandCanvas.height = cropHeight;
+      const patternBandContext = patternBandCanvas.getContext('2d');
+      if (!patternBandContext) {
         URL.revokeObjectURL(objectUrl);
-        reject(new Error('Extraction du motif impossible.'));
+        reject(new Error('Extraction de la frise impossible.'));
         return;
       }
-      motifContext.drawImage(image, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
-      const motifPixels = motifContext.getImageData(0, 0, cropWidth, cropHeight);
-      for (let index = 0; index < motifPixels.data.length; index += 4) {
-        const red = motifPixels.data[index];
-        const green = motifPixels.data[index + 1];
-        const blue = motifPixels.data[index + 2];
-        if (red > 225 && green > 225 && blue > 225) {
-          motifPixels.data[index + 3] = 0;
-        } else {
-          motifPixels.data[index + 3] = Math.min(motifPixels.data[index + 3], 70);
-        }
-      }
-      motifContext.putImageData(motifPixels, 0, 0);
+      patternBandContext.drawImage(image, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
 
       URL.revokeObjectURL(objectUrl);
       resolve({
         labelDataUrl: labelCanvas.toDataURL('image/png'),
-        motifDataUrl: motifCanvas.toDataURL('image/png'),
+        patternBandDataUrl: patternBandCanvas.toDataURL('image/png'),
+        patternBandRatio: cropHeight / cropWidth,
       });
     };
     image.onerror = () => {
@@ -97,20 +87,11 @@ function fitFontSize(doc: jsPDF, text: string, maxWidth: number, initialSize: nu
   return size;
 }
 
-function drawVariablePanelPattern(doc: jsPDF, motifDataUrl: string, x: number, y: number, width: number, height: number): void {
-  const motifWidth = 6.5;
-  const motifHeight = 3.9;
-  const columns = 10;
-  const rows = Math.max(1, Math.ceil((height - 0.8) / 5.4));
+function drawVariablePanelPattern(doc: jsPDF, patternBandDataUrl: string, patternBandRatio: number, x: number, y: number, width: number, height: number): void {
+  const bandHeight = width * patternBandRatio;
+  const rows = Math.ceil(height / bandHeight);
   for (let row = 0; row < rows; row++) {
-    const offsetX = row % 2 === 0 ? 0 : 4.25;
-    for (let column = 0; column < columns; column++) {
-      const motifX = x + offsetX + column * 8.5;
-      const motifY = y + 0.8 + row * 5.4;
-      if (motifX + motifWidth <= x + width) {
-        doc.addImage(motifDataUrl, 'PNG', motifX, motifY, motifWidth, motifHeight, 'madeleine-motif', 'FAST');
-      }
-    }
+    doc.addImage(patternBandDataUrl, 'PNG', x, y + row * bandHeight, width, bandHeight, `madeleine-frieze-${row}`, 'FAST');
   }
 }
 
@@ -311,7 +292,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
     setPdfError(null);
 
     try {
-      const { labelDataUrl: labelArtworkDataUrl, motifDataUrl } = await loadLabelAssets('/etiquette-madeleines-mimsi-sans-qr-hd.png');
+      const { labelDataUrl: labelArtworkDataUrl, patternBandDataUrl, patternBandRatio } = await loadLabelAssets('/etiquette-madeleines-mimsi-sans-qr-hd.png');
 
       const today = new Date().toISOString().slice(0, 10);
 
@@ -362,11 +343,13 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
         doc.addImage(labelArtworkDataUrl, 'PNG', x, y, labelWidth, artworkHeight);
         doc.setFillColor(255, 255, 255);
         doc.rect(x + 0.35, y + artworkHeight, labelWidth - 0.7, variablePanelHeight - 0.35, 'F');
-        drawVariablePanelPattern(doc, motifDataUrl, x, y + artworkHeight, labelWidth, variablePanelHeight);
+        drawVariablePanelPattern(doc, patternBandDataUrl, patternBandRatio, x, y + artworkHeight, labelWidth, variablePanelHeight);
 
         const potName = (b.pot_type?.name ?? '—').toUpperCase();
         const lotCode = b.production_record ? generateLotCode(b.production_record) : null;
         const panelTop = y + artworkHeight;
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(x + 7, panelTop + 0.8, labelWidth - 14, lotCode ? 6.2 : 4.8, 0.8, 0.8, 'F');
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(190, 22, 25);
         fitFontSize(doc, potName, labelWidth - 10, 10, 7);
@@ -393,6 +376,8 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
         const barcodeY = panelTop + (lotCode ? 7.5 : 6);
         doc.addImage(barcodeData, 'PNG', x + 5, barcodeY, labelWidth - 10, 9);
 
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(x + 8, panelTop + 17.4, labelWidth - 16, 4.2, 0.8, 0.8, 'F');
         doc.setFont('courier', 'normal');
         doc.setTextColor(45, 52, 54);
         fitFontSize(doc, b.code, labelWidth - 10, 8, 6);
