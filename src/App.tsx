@@ -121,7 +121,7 @@ function OfficeApp() {
 
   const role = (profile?.role ?? 1) as UserRole;
   const navItem = NAV_SECTIONS.flatMap((s) => s.items).find((i) => i.id === page);
-  const hasAccess = !navItem || (getRoleAccessLevel(role) >= navItem.minRole && (!navItem.allowedRoles || navItem.allowedRoles.includes(role)));
+  const hasAccess = !navItem || (getRoleAccessLevel(role, profile?.access_level) >= navItem.minRole && (!navItem.allowedRoles || navItem.allowedRoles.includes(role)));
 
   useEffect(() => {
     if (!hasAccess) {

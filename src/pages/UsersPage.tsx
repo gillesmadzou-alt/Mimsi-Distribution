@@ -1,10 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, Profile, ROLE_LABELS, UserRole } from '@/lib/supabase';
+import { supabase, Profile, ROLE_LABELS, UserRole, getRoleAccessLevel } from '@/lib/supabase';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { UserPlus, Loader2, Trash2, ShieldCheck, Search, Mail, Lock, User as UserIcon, X, CloudOff } from 'lucide-react';
 
 const EMAIL_DOMAIN = 'mimsidistribution.com';
+const ACCESS_LEVEL_LABELS: Record<number, string> = {
+  1: 'Niveau 1 — accès de base',
+  2: 'Niveau 2 — opérations',
+  3: 'Niveau 3 — comptabilité',
+  4: 'Niveau 4 — supervision',
+  5: 'Niveau 5 — direction',
+  6: 'Niveau 6 — administration complète',
+};
 
 function emailFromFullName(fullName: string): string {
   const identifier = fullName
@@ -33,6 +41,7 @@ export default function UsersPage() {
     phone: '',
     password: '',
     role: 1 as UserRole,
+    accessLevel: 1,
   });
 
   const fetchProfiles = useCallback(async () => {
@@ -81,6 +90,7 @@ export default function UsersPage() {
             fullName: newUser.fullName,
             role: newUser.role,
             phone: newUser.phone,
+            accessLevel: newUser.accessLevel,
           }),
         }
       );
@@ -91,8 +101,8 @@ export default function UsersPage() {
       if (!response.ok) {
         setError(result.error || 'Erreur lors de la création du compte.');
       } else {
-        setSuccess(`Compte créé pour ${newUser.fullName} (${ROLE_LABELS[newUser.role]}). Identifiant : ${emailFromFullName(newUser.fullName)}`);
-        setNewUser({ fullName: '', email: '', phone: '', password: '', role: 1 });
+        setSuccess(`Compte créé pour ${newUser.fullName} (${ROLE_LABELS[newUser.role]}, accès ${newUser.accessLevel}). Identifiant : ${emailFromFullName(newUser.fullName)}`);
+        setNewUser({ fullName: '', email: '', phone: '', password: '', role: 1, accessLevel: 1 });
         setShowForm(false);
         fetchProfiles();
       }
@@ -187,6 +197,7 @@ export default function UsersPage() {
               <tr>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Nom</th>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Rôle</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Accès</th>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Statut</th>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Créé le</th>
                 <th className="text-right px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
@@ -211,6 +222,9 @@ export default function UsersPage() {
                       <ShieldCheck className="w-3 h-3" />
                       {ROLE_LABELS[p.role]}
                     </span>
+                  </td>
+                  <td className="px-6 py-3 text-sm text-gray-600">
+                    Niveau {getRoleAccessLevel(p.role, p.access_level)}
                   </td>
                   <td className="px-6 py-3">
                     <button
@@ -320,13 +334,31 @@ export default function UsersPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Fonction</label>
                 <select
                   value={newUser.role}
-                  onChange={(e) => setNewUser({ ...newUser, role: Number(e.target.value) as UserRole })}
+                  onChange={(e) => {
+                    const role = Number(e.target.value) as UserRole;
+                    setNewUser({ ...newUser, role, accessLevel: getRoleAccessLevel(role) });
+                  }}
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none transition-all"
                 >
                   {Object.entries(ROLE_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Niveau d’accès</label>
+                <select
+                  value={newUser.accessLevel}
+                  onChange={(e) => setNewUser({ ...newUser, accessLevel: Number(e.target.value) })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none transition-all"
+                >
+                  {Object.entries(ACCESS_LEVEL_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-400 mt-1">
+                  La fonction et les droits sont indépendants. Un agent de sécurité reçoit le niveau 1 par défaut.
+                </p>
               </div>
               {error && (
                 <div className="text-sm text-red-600 bg-red-50 rounded-lg p-3">{error}</div>

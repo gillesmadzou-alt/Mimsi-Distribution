@@ -61,8 +61,8 @@ export default function ProductionPage({ onNavigate }: { onNavigate?: (page: str
 
   const ispétrisseur = (profile?.role ?? 1) === 9;
   const isKneader = (profile?.role ?? 1) === 15;
-  const canManage = getRoleAccessLevel(profile?.role ?? 1) >= 2;
-  const canManageBakers = getRoleAccessLevel(profile?.role ?? 1) >= 4 && !ispétrisseur && !isKneader;
+  const canManage = getRoleAccessLevel(profile?.role ?? 1, profile?.access_level) >= 2;
+  const canManageBakers = getRoleAccessLevel(profile?.role ?? 1, profile?.access_level) >= 4 && !ispétrisseur && !isKneader;
   const canCreateRecord = canManage && !isKneader;
   const isDirectrice = (profile?.role ?? 1) === 5;
   const isAdjoint = (profile?.role ?? 1) === 4;

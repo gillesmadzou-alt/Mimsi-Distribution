@@ -58,9 +58,9 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
   const role = profile?.role ?? 1;
   // L'assistant de gestion de stock (16) a le même périmètre opérationnel
   // que la gestionnaire (2), sans hériter des privilèges de direction.
-  const operationalRole = getRoleAccessLevel(role);
+  const operationalRole = getRoleAccessLevel(role, profile?.access_level);
   const canRecordStock = [2, 4, 5, 6].includes(operationalRole);
-  const canManageOptions = [4, 5, 6].includes(role);
+  const canManageOptions = [4, 5, 6].includes(operationalRole);
 
   const loadPots = useCallback(async () => {
     setLoading(true);

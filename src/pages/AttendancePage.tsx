@@ -56,7 +56,7 @@ export default function AttendancePage({ onNavigate }: { onNavigate?: (page: str
     personId: '', arrival: '', departure: '', status: 'present', notes: '',
   });
 
-  const canDelete = profile && getRoleAccessLevel(profile.role) >= 4;
+  const canDelete = profile && getRoleAccessLevel(profile.role, profile.access_level) >= 4;
   const canManualEntry = profile && (profile.role === 4 || profile.role === 5 || profile.role === 6);
   const { fetchWithCache, isOffline } = useOfflineFetch();
 

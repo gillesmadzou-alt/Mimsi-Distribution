@@ -28,7 +28,11 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 
 // This is a distinct job title while keeping only stock-manager operational access.
 // Access checks must not let this identifier inherit director or admin permissions.
-export function getRoleAccessLevel(role: UserRole | number): number {
+export function getRoleAccessLevel(role: UserRole | number, accessLevel?: number | null): number {
+  const explicitLevel = Number(accessLevel);
+  if (Number.isInteger(explicitLevel) && explicitLevel >= 1 && explicitLevel <= 6) {
+    return explicitLevel;
+  }
   const value = Number(role);
   if ([1, 10, 11, 12, 13, 14].includes(value)) return 1;
   if ([2, 9, 15, 16].includes(value)) return 2;
@@ -41,6 +45,7 @@ export interface Profile {
   id: string;
   full_name: string;
   role: UserRole;
+  access_level: number;
   phone: string | null;
   avatar_url: string | null;
   is_active: boolean;

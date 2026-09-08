@@ -60,7 +60,7 @@ export default function LeavePage({ onNavigate }: { onNavigate?: (page: string) 
       setLeaves(cachedLeaves);
       setDrivers(cachedDrivers);
       setProfiles(cachedProfiles);
-      setManagers(cachedProfiles.filter((p) => getRoleAccessLevel(p.role) >= 4));
+      setManagers(cachedProfiles.filter((p) => getRoleAccessLevel(p.role, p.access_level) >= 4));
     }
     setLoading(false);
   }, [fetchWithCache]);

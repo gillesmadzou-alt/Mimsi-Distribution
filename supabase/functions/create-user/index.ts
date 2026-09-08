@@ -71,22 +71,25 @@ Deno.serve(async (req: Request) => {
     );
     const { data: callerProfile, error: profileErr } = await callerClient
       .from("profiles")
-      .select("role")
+      .select("role, access_level")
       .eq("id", user.id)
       .maybeSingle();
 
-    if (profileErr || !callerProfile || callerProfile.role !== 6) {
+    if (profileErr || !callerProfile || callerProfile.access_level !== 6) {
       return jsonResponse(req, { error: "Accès refusé — administrateur uniquement" }, 403);
     }
 
-    const { password, fullName, role, phone } = await req.json();
-    if (!password || !fullName || role === undefined) {
-      return jsonResponse(req, { error: "Nom, mot de passe et rôle sont obligatoires." }, 400);
+    const { password, fullName, role, phone, accessLevel } = await req.json();
+    if (!password || !fullName || role === undefined || accessLevel === undefined) {
+      return jsonResponse(req, { error: "Nom, mot de passe, fonction et niveau d’accès sont obligatoires." }, 400);
     }
 
     const allowedRoles = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
     if (!allowedRoles.includes(role)) {
       return jsonResponse(req, { error: "Rôle non autorisé" }, 400);
+    }
+    if (!Number.isInteger(accessLevel) || accessLevel < 1 || accessLevel > 6) {
+      return jsonResponse(req, { error: "Le niveau d’accès doit être compris entre 1 et 6." }, 400);
     }
     const email = emailFromFullName(fullName);
     if (email === '@mimsidistribution.com') {
@@ -119,6 +122,7 @@ Deno.serve(async (req: Request) => {
       id: newUser.user.id,
       full_name: fullName,
       role,
+      access_level: accessLevel,
       phone: phone?.trim() || null,
       is_active: true,
     });

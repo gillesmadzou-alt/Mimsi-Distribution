@@ -274,7 +274,7 @@ export default function AppShell({ current, onNavigate, onBack, canGoBack, child
 
   const visibleSections = NAV_SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter((item) => getRoleAccessLevel(role) >= item.minRole && (!item.allowedRoles || item.allowedRoles.includes(role))),
+    items: section.items.filter((item) => getRoleAccessLevel(role, profile.access_level) >= item.minRole && (!item.allowedRoles || item.allowedRoles.includes(role))),
   })).filter((section) => section.items.length > 0);
 
   const currentItem = visibleSections.flatMap((s) => s.items).find((i) => i.id === current);
