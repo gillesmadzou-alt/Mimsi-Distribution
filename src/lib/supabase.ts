@@ -352,6 +352,21 @@ export interface ReceivablePayment {
   created_at: string;
 }
 
+export interface AccountingEntry {
+  id: string;
+  account_type: 'cash' | 'bank';
+  movement_type: 'income' | 'expense';
+  entry_date: string;
+  label: string;
+  amount_fcfa: number;
+  reference: string | null;
+  payment_method: 'especes' | 'mobile_money' | 'virement' | 'cheque' | 'carte' | 'autre';
+  notes: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ComplianceCheck {
   id: string;
   batch_id: string;

@@ -20,6 +20,7 @@ const ReturnsPage = lazy(() => import('@/pages/ReturnsPage'));
 const StatisticsPage = lazy(() => import('@/pages/StatisticsPage'));
 const JournalPage = lazy(() => import('@/pages/JournalPage'));
 const ReceivablesPage = lazy(() => import('@/pages/ReceivablesPage'));
+const AccountKeepingPage = lazy(() => import('@/pages/AccountKeepingPage'));
 const ContributionsPage = lazy(() => import('@/pages/ContributionsPage'));
 const CompliancePage = lazy(() => import('@/pages/CompliancePage'));
 const ConsignmentsPage = lazy(() => import('@/pages/ConsignmentsPage'));
@@ -95,6 +96,7 @@ function OfficeApp() {
     statistics: <StatisticsPage onNavigate={navFromPage} />,
     journal: <JournalPage onNavigate={navFromPage} />,
     receivables: <ReceivablesPage onNavigate={navFromPage} />,
+    'account-keeping': <AccountKeepingPage onNavigate={navFromPage} />,
     contributions: <ContributionsPage />,
     compliance: <CompliancePage onNavigate={navFromPage} />,
     consignments: <ConsignmentsPage onNavigate={navFromPage} />,

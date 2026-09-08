@@ -25,7 +25,7 @@ import { useConfirm } from '@/contexts/ConfirmContext';
 export type PageId =
   | 'dashboard' | 'drivers' | 'sales-points' | 'stock' | 'batches' | 'returns'
   | 'statistics' | 'journal' | 'analytics' | 'opportunistic'
-  | 'receivables' | 'contributions' | 'compliance'
+  | 'receivables' | 'contributions' | 'account-keeping' | 'compliance'
   | 'consignments' | 'restock' | 'leave'
   | 'leaderboard' | 'audit' | 'production' | 'map' | 'org-chart'
   | 'barcodes' | 'users' | 'approvals' | 'scheduling' | 'ingredients' | 'reports'
@@ -69,6 +69,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Finance',
     items: [
+      { id: 'account-keeping', label: 'Tenue de compte', description: 'Journal de caisse, comptes clients et compte banque', icon: BookOpen, minRole: 3 },
       { id: 'receivables', label: 'Créances', description: 'Montants dus par les points de vente et paiements reçus', icon: Wallet, minRole: 3 },
       { id: 'contributions', label: 'Cotisations', description: 'Suivi détaillé des cotisations et de leur historique', icon: PiggyBank, minRole: 2 },
       { id: 'expenses', label: 'Dépenses livraison', description: 'Toutes les dépenses de tournée (carburant, papiers, crédits, etc.)', icon: Receipt, minRole: 1 },

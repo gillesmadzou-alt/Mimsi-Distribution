@@ -1,0 +1,169 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Banknote, Building2, CircleDollarSign, Loader2, Plus, Search, Users, X } from 'lucide-react';
+import { supabase, formatFCFA, type AccountingEntry, type Receivable } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
+import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
+
+type Tab = 'cash' | 'clients' | 'bank';
+type ClientBalance = { id: string; name: string; billed: number; paid: number; due: number };
+
+const TABS: { id: Tab; label: string; icon: typeof Banknote }[] = [
+  { id: 'cash', label: 'Journal de caisse', icon: Banknote },
+  { id: 'clients', label: 'Comptes clients', icon: Users },
+  { id: 'bank', label: 'Compte banque', icon: Building2 },
+];
+
+const PAYMENT_LABELS: Record<AccountingEntry['payment_method'], string> = {
+  especes: 'Espèces', mobile_money: 'Mobile Money', virement: 'Virement',
+  cheque: 'Chèque', carte: 'Carte', autre: 'Autre',
+};
+
+export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page: string) => void }) {
+  const { profile } = useAuth();
+  const [activeTab, setActiveTab] = useState<Tab>('cash');
+  const [entries, setEntries] = useState<AccountingEntry[]>([]);
+  const [receivables, setReceivables] = useState<(Receivable & { sales_point?: { id: string; name: string } })[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    movement_type: 'income' as AccountingEntry['movement_type'], entry_date: new Date().toISOString().slice(0, 10),
+    label: '', amount: '', reference: '', payment_method: 'especes' as AccountingEntry['payment_method'], notes: '',
+  });
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const [entriesResult, receivablesResult] = await Promise.all([
+      supabase.from('accounting_entries').select('*').order('entry_date', { ascending: false }).order('created_at', { ascending: false }),
+      supabase.from('receivables').select('*, sales_point:sales_points(id, name)').order('created_at', { ascending: false }),
+    ]);
+    if (entriesResult.error || receivablesResult.error) {
+      setError(entriesResult.error?.message ?? receivablesResult.error?.message ?? 'Chargement impossible.');
+    } else {
+      setEntries((entriesResult.data as AccountingEntry[]) ?? []);
+      setReceivables((receivablesResult.data as typeof receivables) ?? []);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { void loadData(); }, [loadData]);
+  useRealtimeSubscription('account-keeping-page', ['accounting_entries', 'receivables', 'receivable_payments'], loadData);
+
+  const accountEntries = useMemo(() => {
+    const accountType = activeTab === 'bank' ? 'bank' : 'cash';
+    const query = search.trim().toLowerCase();
+    return entries.filter((entry) => entry.account_type === accountType && (!query
+      || entry.label.toLowerCase().includes(query)
+      || (entry.reference ?? '').toLowerCase().includes(query)));
+  }, [activeTab, entries, search]);
+
+  const totals = useMemo(() => {
+    const income = accountEntries.filter((entry) => entry.movement_type === 'income').reduce((sum, entry) => sum + Number(entry.amount_fcfa), 0);
+    const expense = accountEntries.filter((entry) => entry.movement_type === 'expense').reduce((sum, entry) => sum + Number(entry.amount_fcfa), 0);
+    return { income, expense, balance: income - expense };
+  }, [accountEntries]);
+
+  const clientBalances = useMemo<ClientBalance[]>(() => {
+    const grouped = new Map<string, ClientBalance>();
+    for (const receivable of receivables) {
+      const id = receivable.sales_point_id;
+      const current = grouped.get(id) ?? { id, name: receivable.sales_point?.name ?? 'Client sans nom', billed: 0, paid: 0, due: 0 };
+      current.billed += Number(receivable.amount_fcfa);
+      current.paid += Number(receivable.amount_paid);
+      current.due += Number(receivable.amount_fcfa) - Number(receivable.amount_paid);
+      grouped.set(id, current);
+    }
+    const query = search.trim().toLowerCase();
+    return [...grouped.values()].filter((client) => !query || client.name.toLowerCase().includes(query)).sort((a, b) => b.due - a.due);
+  }, [receivables, search]);
+
+  const saveEntry = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!profile || !form.label.trim() || Number(form.amount) <= 0 || activeTab === 'clients') return;
+    setSaving(true);
+    setError(null);
+    const { error: insertError } = await supabase.from('accounting_entries').insert({
+      account_type: activeTab === 'bank' ? 'bank' : 'cash', movement_type: form.movement_type,
+      entry_date: form.entry_date, label: form.label.trim(), amount_fcfa: Number(form.amount),
+      reference: form.reference.trim() || null, payment_method: form.payment_method,
+      notes: form.notes.trim() || null, created_by: profile.id,
+    });
+    if (insertError) setError(insertError.message);
+    else {
+      setShowForm(false);
+      setForm((previous) => ({ ...previous, label: '', amount: '', reference: '', notes: '' }));
+      await loadData();
+    }
+    setSaving(false);
+  };
+
+  const clientTotals = clientBalances.reduce((result, client) => ({
+    billed: result.billed + client.billed, paid: result.paid + client.paid, due: result.due + client.due,
+  }), { billed: 0, paid: 0, due: 0 });
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Tenue de compte</h2>
+          <p className="mt-1 text-sm text-gray-500">Caisse, soldes clients et mouvements bancaires dans un même espace.</p>
+        </div>
+        {activeTab !== 'clients' && (
+          <button onClick={() => setShowForm(true)} className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2.5 font-medium text-white shadow-md">
+            <Plus className="h-4 w-4" /> Nouvelle écriture
+          </button>
+        )}
+      </div>
+
+      <div className="grid gap-2 rounded-2xl border border-gray-200 bg-white p-2 sm:grid-cols-3">
+        {TABS.map(({ id, label, icon: Icon }) => (
+          <button key={id} onClick={() => { setActiveTab(id); setSearch(''); }} className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-colors ${activeTab === id ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'}`}>
+            <Icon className="h-4 w-4" /> {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={activeTab === 'clients' ? 'Rechercher un client…' : 'Rechercher un libellé ou une référence…'} className="w-full rounded-xl border border-gray-200 py-2.5 pl-10 pr-4 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200" />
+      </div>
+
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {loading ? <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-amber-500" /></div> : activeTab === 'clients' ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[['Total facturé', clientTotals.billed], ['Total encaissé', clientTotals.paid], ['Reste à encaisser', clientTotals.due]].map(([label, value]) => (
+              <div key={String(label)} className="rounded-2xl border border-gray-100 bg-white p-4"><p className="text-xs text-gray-500">{label}</p><p className="mt-1 text-xl font-bold text-gray-900">{formatFCFA(Number(value))}</p></div>
+            ))}
+          </div>
+          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
+            <div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50"><tr>{['Client', 'Facturé', 'Encaissé', 'Solde', ''].map((header) => <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{header}</th>)}</tr></thead>
+              <tbody className="divide-y divide-gray-100">{clientBalances.map((client) => <tr key={client.id}><td className="px-4 py-3 font-medium text-gray-900">{client.name}</td><td className="px-4 py-3 text-sm">{formatFCFA(client.billed)}</td><td className="px-4 py-3 text-sm text-emerald-700">{formatFCFA(client.paid)}</td><td className="px-4 py-3 text-sm font-semibold text-amber-700">{formatFCFA(client.due)}</td><td className="px-4 py-3 text-right"><button onClick={() => onNavigate?.('receivables')} className="text-xs font-medium text-blue-600 hover:underline">Voir les créances</button></td></tr>)}</tbody>
+            </table></div>
+            {clientBalances.length === 0 && <p className="p-10 text-center text-sm text-gray-400">Aucun compte client trouvé.</p>}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[['Entrées', totals.income], ['Sorties', totals.expense], ['Solde', totals.balance]].map(([label, value]) => <div key={String(label)} className="rounded-2xl border border-gray-100 bg-white p-4"><p className="text-xs text-gray-500">{label}</p><p className="mt-1 text-xl font-bold text-gray-900">{formatFCFA(Number(value))}</p></div>)}
+          </div>
+          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white"><div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50"><tr>{['Date', 'Libellé', 'Référence', 'Moyen', 'Entrée', 'Sortie'].map((header) => <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{header}</th>)}</tr></thead><tbody className="divide-y divide-gray-100">
+            {accountEntries.map((entry) => <tr key={entry.id}><td className="px-4 py-3 text-sm text-gray-500">{new Date(`${entry.entry_date}T00:00:00`).toLocaleDateString('fr-FR')}</td><td className="px-4 py-3 text-sm font-medium text-gray-900">{entry.label}</td><td className="px-4 py-3 text-sm text-gray-500">{entry.reference ?? '—'}</td><td className="px-4 py-3 text-sm text-gray-500">{PAYMENT_LABELS[entry.payment_method]}</td><td className="px-4 py-3 text-sm font-semibold text-emerald-700">{entry.movement_type === 'income' ? formatFCFA(entry.amount_fcfa) : '—'}</td><td className="px-4 py-3 text-sm font-semibold text-red-600">{entry.movement_type === 'expense' ? formatFCFA(entry.amount_fcfa) : '—'}</td></tr>)}
+          </tbody></table></div>{accountEntries.length === 0 && <p className="p-10 text-center text-sm text-gray-400">Aucune écriture enregistrée.</p>}</div>
+        </>
+      )}
+
+      {showForm && activeTab !== 'clients' && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"><div className="mb-4 flex items-center justify-between"><h3 className="font-bold text-gray-900">Nouvelle écriture — {activeTab === 'bank' ? 'Banque' : 'Caisse'}</h3><button onClick={() => setShowForm(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X className="h-5 w-5" /></button></div><form onSubmit={saveEntry} className="space-y-3">
+        <div className="grid grid-cols-2 gap-3"><select value={form.movement_type} onChange={(event) => setForm({ ...form, movement_type: event.target.value as AccountingEntry['movement_type'] })} className="rounded-xl border border-gray-200 px-3 py-2.5"><option value="income">Entrée</option><option value="expense">Sortie</option></select><input type="date" required value={form.entry_date} onChange={(event) => setForm({ ...form, entry_date: event.target.value })} className="rounded-xl border border-gray-200 px-3 py-2.5" /></div>
+        <input required value={form.label} onChange={(event) => setForm({ ...form, label: event.target.value })} placeholder="Libellé de l’écriture" className="w-full rounded-xl border border-gray-200 px-3 py-2.5" />
+        <div className="grid grid-cols-2 gap-3"><input type="number" min="1" required value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder="Montant FCFA" className="rounded-xl border border-gray-200 px-3 py-2.5" /><select value={form.payment_method} onChange={(event) => setForm({ ...form, payment_method: event.target.value as AccountingEntry['payment_method'] })} className="rounded-xl border border-gray-200 px-3 py-2.5">{Object.entries(PAYMENT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+        <input value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} placeholder="Référence (facultatif)" className="w-full rounded-xl border border-gray-200 px-3 py-2.5" /><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Notes (facultatif)" rows={2} className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2.5" />
+        <button disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 py-2.5 font-medium text-white disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CircleDollarSign className="h-4 w-4" />} Enregistrer</button>
+      </form></div></div>}
+    </div>
+  );
+}
