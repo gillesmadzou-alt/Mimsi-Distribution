@@ -354,7 +354,7 @@ export interface ReceivablePayment {
 
 export interface AccountingEntry {
   id: string;
-  account_type: 'cash' | 'bank';
+  account_type: 'cash' | 'bank' | 'client';
   movement_type: 'income' | 'expense';
   entry_date: string;
   label: string;
@@ -362,6 +362,7 @@ export interface AccountingEntry {
   reference: string | null;
   payment_method: 'especes' | 'mobile_money' | 'virement' | 'cheque' | 'carte' | 'autre';
   notes: string | null;
+  client_name: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
