@@ -19,6 +19,24 @@ const PAYMENT_LABELS: Record<AccountingEntry['payment_method'], string> = {
   cheque: 'Chèque', carte: 'Carte', autre: 'Autre',
 };
 
+function buildRunningBalances(items: AccountingEntry[], clientScoped = false) {
+  const balances = new Map<string, number>();
+  const runningByAccount = new Map<string, number>();
+  [...items]
+    .sort((a, b) => a.entry_date.localeCompare(b.entry_date) || a.created_at.localeCompare(b.created_at))
+    .forEach((entry) => {
+      const accountKey = clientScoped ? (entry.client_name?.trim().toLowerCase() || entry.id) : entry.account_type;
+      const previous = runningByAccount.get(accountKey) ?? 0;
+      const signedAmount = entry.movement_type === (clientScoped ? 'expense' : 'income')
+        ? Number(entry.amount_fcfa)
+        : -Number(entry.amount_fcfa);
+      const balance = previous + signedAmount;
+      runningByAccount.set(accountKey, balance);
+      balances.set(entry.id, balance);
+    });
+  return balances;
+}
+
 function EntryActions({ entry, allowed, onEdit, onDelete }: {
   entry: AccountingEntry;
   allowed: boolean;
@@ -75,19 +93,25 @@ export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page:
   useEffect(() => { void loadData(); }, [loadData]);
   useRealtimeSubscription('account-keeping-page', ['accounting_entries', 'receivables', 'receivable_payments'], loadData);
 
-  const accountEntries = useMemo(() => {
+  const allAccountEntries = useMemo(() => {
     const accountType = activeTab === 'bank' ? 'bank' : 'cash';
+    return entries.filter((entry) => entry.account_type === accountType);
+  }, [activeTab, entries]);
+
+  const accountBalances = useMemo(() => buildRunningBalances(allAccountEntries), [allAccountEntries]);
+
+  const accountEntries = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return entries.filter((entry) => entry.account_type === accountType && (!query
+    return allAccountEntries.filter((entry) => !query
       || entry.label.toLowerCase().includes(query)
-      || (entry.reference ?? '').toLowerCase().includes(query)));
-  }, [activeTab, entries, search]);
+      || (entry.reference ?? '').toLowerCase().includes(query));
+  }, [allAccountEntries, search]);
 
   const totals = useMemo(() => {
-    const income = accountEntries.filter((entry) => entry.movement_type === 'income').reduce((sum, entry) => sum + Number(entry.amount_fcfa), 0);
-    const expense = accountEntries.filter((entry) => entry.movement_type === 'expense').reduce((sum, entry) => sum + Number(entry.amount_fcfa), 0);
+    const income = allAccountEntries.filter((entry) => entry.movement_type === 'income').reduce((sum, entry) => sum + Number(entry.amount_fcfa), 0);
+    const expense = allAccountEntries.filter((entry) => entry.movement_type === 'expense').reduce((sum, entry) => sum + Number(entry.amount_fcfa), 0);
     return { income, expense, balance: income - expense };
-  }, [accountEntries]);
+  }, [allAccountEntries]);
 
   const clientBalances = useMemo<ClientBalance[]>(() => {
     const grouped = new Map<string, ClientBalance>();
@@ -120,6 +144,8 @@ export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page:
       || entry.label.toLowerCase().includes(query)
       || (entry.reference ?? '').toLowerCase().includes(query)));
   }, [entries, search]);
+  const allManualClientEntries = useMemo(() => entries.filter((entry) => entry.account_type === 'client'), [entries]);
+  const clientEntryBalances = useMemo(() => buildRunningBalances(allManualClientEntries, true), [allManualClientEntries]);
   const accessLevel = getRoleAccessLevel(profile?.role ?? 1, profile?.access_level);
   const canManageEntry = (entry: AccountingEntry) => accessLevel >= 5 || entry.created_by === profile?.id;
 
@@ -211,8 +237,8 @@ export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page:
           </div>
           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
             <div className="border-b border-gray-100 px-4 py-3"><h3 className="font-semibold text-gray-900">Ajustements manuels des clients</h3><p className="text-xs text-gray-500">Les créances automatiques restent inchangées.</p></div>
-            <div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50"><tr>{['Date', 'Client', 'Libellé', 'Type', 'Montant', 'Actions'].map((header) => <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{header}</th>)}</tr></thead><tbody className="divide-y divide-gray-100">
-              {manualClientEntries.map((entry) => <tr key={entry.id}><td className="px-4 py-3 text-sm text-gray-500">{new Date(`${entry.entry_date}T00:00:00`).toLocaleDateString('fr-FR')}</td><td className="px-4 py-3 text-sm font-medium">{entry.client_name}</td><td className="px-4 py-3 text-sm">{entry.label}</td><td className="px-4 py-3 text-sm">{entry.movement_type === 'expense' ? 'Débit' : 'Crédit'}</td><td className="px-4 py-3 text-sm font-semibold">{formatFCFA(entry.amount_fcfa)}</td><td className="px-4 py-3"><EntryActions entry={entry} allowed={canManageEntry(entry)} onEdit={openEdit} onDelete={deleteEntry} /></td></tr>)}
+            <div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50"><tr>{['Date', 'Client', 'Libellé', 'Entrée / débit', 'Sortie / crédit', 'Solde', 'Actions'].map((header) => <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{header}</th>)}</tr></thead><tbody className="divide-y divide-gray-100">
+              {manualClientEntries.map((entry) => <tr key={entry.id}><td className="px-4 py-3 text-sm text-gray-500">{new Date(`${entry.entry_date}T00:00:00`).toLocaleDateString('fr-FR')}</td><td className="px-4 py-3 text-sm font-medium">{entry.client_name}</td><td className="px-4 py-3 text-sm">{entry.label}</td><td className="px-4 py-3 text-sm font-semibold text-amber-700">{entry.movement_type === 'expense' ? formatFCFA(entry.amount_fcfa) : '—'}</td><td className="px-4 py-3 text-sm font-semibold text-emerald-700">{entry.movement_type === 'income' ? formatFCFA(entry.amount_fcfa) : '—'}</td><td className="px-4 py-3 text-sm font-bold text-gray-900">{formatFCFA(clientEntryBalances.get(entry.id) ?? 0)}</td><td className="px-4 py-3"><EntryActions entry={entry} allowed={canManageEntry(entry)} onEdit={openEdit} onDelete={deleteEntry} /></td></tr>)}
             </tbody></table></div>{manualClientEntries.length === 0 && <p className="p-8 text-center text-sm text-gray-400">Aucun ajustement manuel.</p>}
           </div>
         </>
@@ -221,8 +247,8 @@ export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page:
           <div className="grid gap-3 sm:grid-cols-3">
             {[['Entrées', totals.income], ['Sorties', totals.expense], ['Solde', totals.balance]].map(([label, value]) => <div key={String(label)} className="rounded-2xl border border-gray-100 bg-white p-4"><p className="text-xs text-gray-500">{label}</p><p className="mt-1 text-xl font-bold text-gray-900">{formatFCFA(Number(value))}</p></div>)}
           </div>
-          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white"><div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50"><tr>{['Date', 'Libellé', 'Référence', 'Moyen', 'Entrée', 'Sortie', 'Actions'].map((header) => <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{header}</th>)}</tr></thead><tbody className="divide-y divide-gray-100">
-            {accountEntries.map((entry) => <tr key={entry.id}><td className="px-4 py-3 text-sm text-gray-500">{new Date(`${entry.entry_date}T00:00:00`).toLocaleDateString('fr-FR')}</td><td className="px-4 py-3 text-sm font-medium text-gray-900">{entry.label}</td><td className="px-4 py-3 text-sm text-gray-500">{entry.reference ?? '—'}</td><td className="px-4 py-3 text-sm text-gray-500">{PAYMENT_LABELS[entry.payment_method]}</td><td className="px-4 py-3 text-sm font-semibold text-emerald-700">{entry.movement_type === 'income' ? formatFCFA(entry.amount_fcfa) : '—'}</td><td className="px-4 py-3 text-sm font-semibold text-red-600">{entry.movement_type === 'expense' ? formatFCFA(entry.amount_fcfa) : '—'}</td><td className="px-4 py-3"><EntryActions entry={entry} allowed={canManageEntry(entry)} onEdit={openEdit} onDelete={deleteEntry} /></td></tr>)}
+          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white"><div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50"><tr>{['Date', 'Libellé', 'Référence', 'Moyen', 'Entrée', 'Sortie', 'Solde', 'Actions'].map((header) => <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{header}</th>)}</tr></thead><tbody className="divide-y divide-gray-100">
+            {accountEntries.map((entry) => <tr key={entry.id}><td className="px-4 py-3 text-sm text-gray-500">{new Date(`${entry.entry_date}T00:00:00`).toLocaleDateString('fr-FR')}</td><td className="px-4 py-3 text-sm font-medium text-gray-900">{entry.label}</td><td className="px-4 py-3 text-sm text-gray-500">{entry.reference ?? '—'}</td><td className="px-4 py-3 text-sm text-gray-500">{PAYMENT_LABELS[entry.payment_method]}</td><td className="px-4 py-3 text-sm font-semibold text-emerald-700">{entry.movement_type === 'income' ? formatFCFA(entry.amount_fcfa) : '—'}</td><td className="px-4 py-3 text-sm font-semibold text-red-600">{entry.movement_type === 'expense' ? formatFCFA(entry.amount_fcfa) : '—'}</td><td className="px-4 py-3 text-sm font-bold text-gray-900">{formatFCFA(accountBalances.get(entry.id) ?? 0)}</td><td className="px-4 py-3"><EntryActions entry={entry} allowed={canManageEntry(entry)} onEdit={openEdit} onDelete={deleteEntry} /></td></tr>)}
           </tbody></table></div>{accountEntries.length === 0 && <p className="p-10 text-center text-sm text-gray-400">Aucune écriture enregistrée.</p>}</div>
         </>
       )}

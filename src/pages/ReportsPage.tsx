@@ -3,8 +3,8 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import {
   supabase, ROLE_LABELS, formatFCFA, UserRole, Profile,
   Driver, SalesPoint, DeliveryBatch, Deposit, Return, ProductionRecord,
-  Receivable, StockMovement, Ingredient, DoughBatch, Kneader, Baker,
-  AttendanceRecord, QuotaPayment, PotType,
+  Receivable, StockMovement, Ingredient, DoughBatch,
+  AttendanceRecord, QuotaPayment, PotType, AccountingEntry,
 } from '@/lib/supabase';
 import { brazzavilleToday, formatBrazzavilleDate } from '@/lib/brazzavilleTime';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
@@ -13,7 +13,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { downloadPdfReport, downloadExcelReport, downloadMultiPdfReport, downloadMultiExcelReport } from '@/lib/exportUtils';
 import LeafletMap, { MapMarker, escapeHtml } from '@/components/LeafletMap';
 import {
-  FileText, FileSpreadsheet, Loader2, Calendar, Filter, ChevronRight,
+  FileText, FileSpreadsheet, Loader2, Calendar, Filter,
   TrendingUp, Package, Users, Wallet, Factory, FlaskConical, Truck, AlertCircle, Map as MapIcon,
   UserCheck, CheckSquare, Square, Layers, CloudOff,
 } from 'lucide-react';
@@ -177,13 +177,12 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [salesPoints, setSalesPoints] = useState<SalesPoint[]>([]);
   const [quotaPayments, setQuotaPayments] = useState<QuotaPayment[]>([]);
-  const [kneaders, setKneaders] = useState<Kneader[]>([]);
-  const [bakers, setBakers] = useState<Baker[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [potTypes, setPotTypes] = useState<PotType[]>([]);
   const [equipmentAssets, setEquipmentAssets] = useState<EquipmentAsset[]>([]);
   const [inventorySessions, setInventorySessions] = useState<InventorySession[]>([]);
+  const [accountingEntries, setAccountingEntries] = useState<AccountingEntry[]>([]);
 
   const { fetchWithCache, isOffline } = useOfflineFetch();
 
@@ -208,8 +207,8 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const result = await fetchWithCache('reports-page', async () => {
-      const [b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp, pots, equipment, inventories] = await Promise.all([
+    const result = await fetchWithCache('reports-page-v99', async () => {
+      const [b, dep, ret, recv, prod, stock, ing, db, dr, sp, pr, att, qp, pots, equipment, inventories, accounts] = await Promise.all([
         supabase.from('delivery_batches').select('*, driver:drivers(*), pot_type:pot_types(*)').order('batch_date', { ascending: false }).limit(500),
         supabase.from('deposits').select('*, sales_point:sales_points(*), batch:delivery_batches(*)').order('deposited_at', { ascending: false }).limit(500),
         supabase.from('returns').select('*, sales_point:sales_points(*), batch:delivery_batches(*)').order('returned_at', { ascending: false }).limit(500),
@@ -220,19 +219,18 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
         supabase.from('dough_batches').select('*, kneader:kneaders(*), ingredients:dough_batch_ingredients(*, ingredient:ingredients(*))').order('batch_date', { ascending: false }).limit(500),
         supabase.from('drivers').select('*').order('full_name'),
         supabase.from('sales_points').select('*').order('name'),
-        supabase.from('kneaders').select('*').order('full_name'),
-        supabase.from('bakers').select('*').order('full_name'),
         supabase.from('profiles').select('*').order('full_name'),
         supabase.from('attendance_records').select('*').order('attendance_date', { ascending: false }).limit(2000),
         supabase.from('quota_payments').select('*').order('payment_date', { ascending: false }).limit(2000),
         supabase.from('pot_types').select('*').eq('is_active', true).order('name'),
         supabase.from('equipment_assets').select('*').eq('is_active', true).order('asset_type').order('name'),
         supabase.from('inventory_sessions').select('*, lines:inventory_session_lines(*, pot_type:pot_types(name), ingredient:ingredients(name))').order('inventory_date', { ascending: false }).limit(100),
+        supabase.from('accounting_entries').select('*').order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(2000),
       ]);
-      return { b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp, pots, equipment, inventories };
+      return { b, dep, ret, recv, prod, stock, ing, db, dr, sp, pr, att, qp, pots, equipment, inventories, accounts };
     });
     if (result.data) {
-      const { b, dep, ret, recv, prod, stock, ing, db, dr, sp, kn, bk, pr, att, qp, pots, equipment, inventories } = result.data;
+      const { b, dep, ret, recv, prod, stock, ing, db, dr, sp, pr, att, qp, pots, equipment, inventories, accounts } = result.data;
       setAttendanceRecords(att.data ?? []);
       setBatches(b.data ?? []);
       setDeposits(dep.data ?? []);
@@ -244,24 +242,136 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
       setDoughBatches(db.data ?? []);
       setDrivers(dr.data ?? []);
       setSalesPoints(sp.data ?? []);
-      setKneaders(kn.data ?? []);
-      setBakers(bk.data ?? []);
       setProfiles(pr.data ?? []);
       setQuotaPayments(qp?.data ?? []);
       setPotTypes((pots.data ?? []) as PotType[]);
       setEquipmentAssets((equipment.data ?? []) as EquipmentAsset[]);
       setInventorySessions((inventories.data ?? []) as InventorySession[]);
+      setAccountingEntries((accounts?.data ?? []) as AccountingEntry[]);
     }
     setLoading(false);
   }, [fetchWithCache]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  useRealtimeSubscription('reports-page', isOffline ? [] : ['delivery_batches', 'deposits', 'returns', 'receivables', 'production_records', 'stock_movements', 'ingredients', 'dough_batches', 'sales_points', 'quota_payments', 'pot_types', 'equipment_assets', 'inventory_sessions', 'inventory_session_lines'], () => { loadData(); });
+  useRealtimeSubscription('reports-page', isOffline ? [] : ['delivery_batches', 'deposits', 'returns', 'receivables', 'receivable_payments', 'accounting_entries', 'production_records', 'stock_movements', 'ingredients', 'dough_batches', 'sales_points', 'quota_payments', 'pot_types', 'equipment_assets', 'inventory_sessions', 'inventory_session_lines'], () => { loadData(); });
 
   const inRange = (dateStr: string) => {
     const d = dateStr.slice(0, 10);
     return d >= fromDate && d <= toDate;
+  };
+
+  const buildAccountLedger = (accountType: 'cash' | 'bank') => {
+    const relevant = accountingEntries
+      .filter((entry) => entry.account_type === accountType && entry.entry_date <= toDate)
+      .sort((a, b) => a.entry_date.localeCompare(b.entry_date) || a.created_at.localeCompare(b.created_at));
+    let balance = 0;
+    let openingBalance = 0;
+    const allRows = relevant.map((entry) => {
+      const income = entry.movement_type === 'income' ? Number(entry.amount_fcfa) : 0;
+      const expense = entry.movement_type === 'expense' ? Number(entry.amount_fcfa) : 0;
+      balance += income - expense;
+      if (entry.entry_date < fromDate) openingBalance = balance;
+      return {
+        dateValue: entry.entry_date,
+        date: fmtDate(entry.entry_date),
+        label: entry.label,
+        reference: entry.reference ?? '—',
+        income: income ? formatFCFA(income) : '—',
+        expense: expense ? formatFCFA(expense) : '—',
+        balance: formatFCFA(balance),
+        incomeValue: income,
+        expenseValue: expense,
+      };
+    });
+    const rows = allRows.filter((row) => row.dateValue >= fromDate).reverse();
+    const periodIncome = rows.reduce((sum, row) => sum + row.incomeValue, 0);
+    const periodExpense = rows.reduce((sum, row) => sum + row.expenseValue, 0);
+    return {
+      columns: [
+        { header: 'Date', key: 'date' },
+        { header: 'Libellé', key: 'label' },
+        { header: 'Référence', key: 'reference' },
+        { header: 'Entrée', key: 'income', align: 'right' as const },
+        { header: 'Sortie', key: 'expense', align: 'right' as const },
+        { header: 'Solde', key: 'balance', align: 'right' as const },
+      ],
+      rows: rows.map((row) => ({
+        date: row.date,
+        label: row.label,
+        reference: row.reference,
+        income: row.income,
+        expense: row.expense,
+        balance: row.balance,
+      })),
+      summary: [
+        { label: 'Solde d’ouverture', value: formatFCFA(openingBalance) },
+        { label: 'Entrées de la période', value: formatFCFA(periodIncome) },
+        { label: 'Sorties de la période', value: formatFCFA(periodExpense) },
+        { label: 'Solde de clôture', value: formatFCFA(balance) },
+        { label: 'Période', value: `${fmtDate(fromDate)} — ${fmtDate(toDate)}` },
+      ],
+    };
+  };
+
+  const buildClientLedger = () => {
+    const operations = [
+      ...receivables.map((receivable) => ({
+        id: `receivable:${receivable.id}`,
+        date: receivable.created_at.slice(0, 10),
+        createdAt: receivable.created_at,
+        client: receivable.sales_point?.name ?? 'Client sans nom',
+        label: 'Créance automatique',
+        debit: Number(receivable.amount_fcfa),
+        credit: Number(receivable.amount_paid),
+      })),
+      ...accountingEntries.filter((entry) => entry.account_type === 'client').map((entry) => ({
+        id: `entry:${entry.id}`,
+        date: entry.entry_date,
+        createdAt: entry.created_at,
+        client: entry.client_name?.trim() || 'Client sans nom',
+        label: entry.label,
+        debit: entry.movement_type === 'expense' ? Number(entry.amount_fcfa) : 0,
+        credit: entry.movement_type === 'income' ? Number(entry.amount_fcfa) : 0,
+      })),
+    ].filter((operation) => operation.date <= toDate)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
+    const balances = new Map<string, number>();
+    const openingBalances = new Map<string, number>();
+    const allRows = operations.map((operation) => {
+      const key = operation.client.toLowerCase();
+      const balance = (balances.get(key) ?? 0) + operation.debit - operation.credit;
+      balances.set(key, balance);
+      if (operation.date < fromDate) openingBalances.set(key, balance);
+      return { ...operation, balance };
+    });
+    const periodRows = allRows.filter((row) => row.date >= fromDate).reverse();
+    const totalOpening = [...openingBalances.values()].reduce((sum, value) => sum + value, 0);
+    const totalDebit = periodRows.reduce((sum, row) => sum + row.debit, 0);
+    const totalCredit = periodRows.reduce((sum, row) => sum + row.credit, 0);
+    const closingBalance = [...balances.values()].reduce((sum, value) => sum + value, 0);
+    return {
+      columns: [
+        { header: 'Date', key: 'date' },
+        { header: 'Client', key: 'client' },
+        { header: 'Libellé', key: 'label' },
+        { header: 'Entrée / débit', key: 'debit', align: 'right' as const },
+        { header: 'Sortie / crédit', key: 'credit', align: 'right' as const },
+        { header: 'Solde client', key: 'balance', align: 'right' as const },
+      ],
+      rows: periodRows.map((row) => ({
+        date: fmtDate(row.date), client: row.client, label: row.label,
+        debit: row.debit ? formatFCFA(row.debit) : '—',
+        credit: row.credit ? formatFCFA(row.credit) : '—', balance: formatFCFA(row.balance),
+      })),
+      summary: [
+        { label: 'Solde clients à l’ouverture', value: formatFCFA(totalOpening) },
+        { label: 'Débits de la période', value: formatFCFA(totalDebit) },
+        { label: 'Crédits de la période', value: formatFCFA(totalCredit) },
+        { label: 'Solde clients à la clôture', value: formatFCFA(closingBalance) },
+        { label: 'Période', value: `${fmtDate(fromDate)} — ${fmtDate(toDate)}` },
+      ],
+    };
   };
 
   // --- Report definitions ---
@@ -329,6 +439,63 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
             { label: 'Total dû', value: formatFCFA(totalDue) },
             { label: 'Total encaissé', value: formatFCFA(totalPaid) },
             { label: 'Reste à recouvrer', value: formatFCFA(outstanding) },
+            { label: 'Période', value: `${fmtDate(fromDate)} — ${fmtDate(toDate)}` },
+          ],
+        };
+      },
+    },
+    {
+      id: 'cash-ledger',
+      title: 'Journal de caisse',
+      description: 'Entrées, sorties et solde progressif de la caisse',
+      icon: Wallet,
+      roles: [3, 4, 5, 6],
+      build: async () => buildAccountLedger('cash'),
+    },
+    {
+      id: 'client-accounts',
+      title: 'Comptes clients',
+      description: 'Débits, crédits et solde progressif de chaque client',
+      icon: Users,
+      roles: [3, 4, 5, 6],
+      build: async () => buildClientLedger(),
+    },
+    {
+      id: 'bank-account',
+      title: 'Compte banque',
+      description: 'Entrées, sorties et solde progressif du compte bancaire',
+      icon: Wallet,
+      roles: [3, 4, 5, 6],
+      build: async () => buildAccountLedger('bank'),
+    },
+    {
+      id: 'account-keeping-general',
+      title: 'Tenue de compte générale',
+      description: 'Synthèse de la caisse, de la banque et des comptes clients',
+      icon: FileSpreadsheet,
+      roles: [3, 4, 5, 6],
+      build: async () => {
+        const cash = buildAccountLedger('cash');
+        const bank = buildAccountLedger('bank');
+        const clients = buildClientLedger();
+        const summaryValue = (items: { label: string; value: string }[], label: string) => items.find((item) => item.label === label)?.value ?? formatFCFA(0);
+        return {
+          columns: [
+            { header: 'Compte', key: 'account' },
+            { header: 'Solde d’ouverture', key: 'opening', align: 'right' as const },
+            { header: 'Entrées / débits', key: 'income', align: 'right' as const },
+            { header: 'Sorties / crédits', key: 'expense', align: 'right' as const },
+            { header: 'Solde de clôture', key: 'closing', align: 'right' as const },
+          ],
+          rows: [
+            { account: 'Journal de caisse', opening: summaryValue(cash.summary, 'Solde d’ouverture'), income: summaryValue(cash.summary, 'Entrées de la période'), expense: summaryValue(cash.summary, 'Sorties de la période'), closing: summaryValue(cash.summary, 'Solde de clôture') },
+            { account: 'Compte banque', opening: summaryValue(bank.summary, 'Solde d’ouverture'), income: summaryValue(bank.summary, 'Entrées de la période'), expense: summaryValue(bank.summary, 'Sorties de la période'), closing: summaryValue(bank.summary, 'Solde de clôture') },
+            { account: 'Comptes clients', opening: summaryValue(clients.summary, 'Solde clients à l’ouverture'), income: summaryValue(clients.summary, 'Débits de la période'), expense: summaryValue(clients.summary, 'Crédits de la période'), closing: summaryValue(clients.summary, 'Solde clients à la clôture') },
+          ],
+          summary: [
+            { label: 'Écritures de caisse sur la période', value: String(cash.rows.length) },
+            { label: 'Écritures bancaires sur la période', value: String(bank.rows.length) },
+            { label: 'Opérations clients sur la période', value: String(clients.rows.length) },
             { label: 'Période', value: `${fmtDate(fromDate)} — ${fmtDate(toDate)}` },
           ],
         };
