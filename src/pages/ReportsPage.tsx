@@ -162,6 +162,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
     const d = new Date(); d.setDate(1); return brazzavilleToday(d);
   });
   const [toDate, setToDate] = useState(() => brazzavilleToday());
+  const [reportDriverId, setReportDriverId] = useState('all');
   const [attPersonType, setAttPersonType] = useState<string>('all');
   const [attPerson, setAttPerson] = useState<string>('all');
 
@@ -207,7 +208,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const result = await fetchWithCache('reports-page-v99', async () => {
+    const result = await fetchWithCache('reports-page-v100', async () => {
       const [b, dep, ret, recv, prod, stock, ing, db, dr, sp, pr, att, qp, pots, equipment, inventories, accounts] = await Promise.all([
         supabase.from('delivery_batches').select('*, driver:drivers(*), pot_type:pot_types(*)').order('batch_date', { ascending: false }).limit(500),
         supabase.from('deposits').select('*, sales_point:sales_points(*), batch:delivery_batches(*)').order('deposited_at', { ascending: false }).limit(500),
@@ -260,6 +261,11 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
     const d = dateStr.slice(0, 10);
     return d >= fromDate && d <= toDate;
   };
+
+  // Applies the selected commercial to all distribution-network reports.
+  const matchesSelectedDriver = (driverId: string | null | undefined) => reportDriverId === 'all' || driverId === reportDriverId;
+  const matchesSelectedSalesPoint = (salesPointId: string) => matchesSelectedDriver(salesPoints.find((point) => point.id === salesPointId)?.driver_id);
+  const reportScopeLabel = reportDriverId === 'all' ? 'Tous les commerciaux' : `Commercial : ${drivers.find((driver) => driver.id === reportDriverId)?.full_name ?? 'Inconnu'}`;
 
   const buildAccountLedger = (accountType: 'cash' | 'bank') => {
     const relevant = accountingEntries
@@ -400,7 +406,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
       icon: TrendingUp,
       roles: [3, 4, 5, 6, 7],
       build: async () => {
-        const filtered = deposits.filter((d) => inRange(d.deposited_at));
+        const filtered = deposits.filter((d) => inRange(d.deposited_at) && matchesSelectedDriver(batches.find((batch) => batch.id === d.batch_id)?.driver_id));
         const total = filtered.reduce((s, d) => s + d.amount_fcfa, 0);
         const bySP = new Map<string, { name: string; count: number; total: number }>();
         filtered.forEach((d) => {
@@ -431,7 +437,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
       icon: Wallet,
       roles: [3, 4, 5, 6, 7],
       build: async () => {
-        const filtered = receivables.filter((r) => inRange(r.created_at));
+        const filtered = receivables.filter((r) => inRange(r.created_at) && matchesSelectedDriver(r.driver_id));
         const totalDue = filtered.reduce((s, r) => s + r.amount_fcfa, 0);
         const totalPaid = filtered.reduce((s, r) => s + r.amount_paid, 0);
         const outstanding = totalDue - totalPaid;
@@ -525,8 +531,8 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
       icon: Wallet,
       roles: [2, 3, 4, 5, 6, 7, 16],
       build: async () => {
-        const contributionPoints = salesPoints.filter((point) => point.is_new);
-        const periodPayments = quotaPayments.filter((payment) => inRange(payment.payment_date));
+        const contributionPoints = salesPoints.filter((point) => point.is_new && matchesSelectedDriver(point.driver_id));
+        const periodPayments = quotaPayments.filter((payment) => inRange(payment.payment_date) && matchesSelectedSalesPoint(payment.sales_point_id));
         const paidInPeriodByPoint = new Map<string, number>();
         const lastPaymentByPoint = new Map<string, string>();
         periodPayments.forEach((payment) => {
@@ -595,7 +601,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
       icon: Package,
       roles: [2, 3, 4, 5, 6, 7, 8],
       build: async () => {
-        const filtered = returns.filter((r) => inRange(r.returned_at));
+        const filtered = returns.filter((r) => inRange(r.returned_at) && matchesSelectedDriver(r.driver_id ?? batches.find((batch) => batch.id === r.batch_id)?.driver_id));
         const totalPots = filtered.reduce((s, r) => s + r.quantity, 0);
         const totalMadeleines = filtered.reduce((s, r) => s + r.madeleine_count, 0);
         return {
@@ -885,13 +891,13 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
       build: async () => {
         const driverStats = new Map<string, { name: string; deposits: number; delivered: number; returned: number; amount: number }>();
         drivers.forEach((d) => driverStats.set(d.id, { name: d.full_name, deposits: 0, delivered: 0, returned: 0, amount: 0 }));
-        deposits.filter((d) => inRange(d.deposited_at)).forEach((dep) => {
+        deposits.filter((d) => inRange(d.deposited_at) && matchesSelectedDriver(batches.find((batch) => batch.id === d.batch_id)?.driver_id)).forEach((dep) => {
           const batch = batches.find((b) => b.id === dep.batch_id);
           const drvId = batch?.driver_id ?? '';
           const entry = driverStats.get(drvId);
           if (entry) { entry.deposits++; entry.amount += dep.amount_fcfa; }
         });
-        batches.filter((b) => inRange(b.batch_date)).forEach((b) => {
+        batches.filter((b) => inRange(b.batch_date) && matchesSelectedDriver(b.driver_id)).forEach((b) => {
           const entry = driverStats.get(b.driver_id);
           if (entry) { entry.delivered += b.pots_delivered; entry.returned += b.pots_returned; }
         });
@@ -924,6 +930,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
         return {
           columns: [
             { header: 'Nom', key: 'name' },
+            { header: 'Commercial', key: 'driver' },
             { header: 'Quartier', key: 'district' },
             { header: 'Zone', key: 'zone' },
             { header: 'Quota', key: 'quota', align: 'right' as const },
@@ -931,14 +938,16 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
             { header: 'Statut quota', key: 'qStatus', align: 'center' as const },
             { header: 'Actif', key: 'active', align: 'center' as const },
           ],
-          rows: salesPoints.map((sp) => ({
+          rows: salesPoints.filter((sp) => matchesSelectedDriver(sp.driver_id)).map((sp) => ({
             name: sp.name, district: sp.district, zone: sp.zone,
+            driver: sp.driver_id ? (drivers.find((driver) => driver.id === sp.driver_id)?.full_name ?? 'Commercial inconnu') : 'Sans commercial',
             quota: formatFCFA(sp.quota_amount), paid: formatFCFA(sp.quota_paid),
             qStatus: sp.quota_status, active: sp.is_active ? 'Oui' : 'Non',
           })),
           summary: [
-            { label: 'Total points de vente', value: String(salesPoints.length) },
-            { label: 'Points actifs', value: String(salesPoints.filter((s) => s.is_active).length) },
+            { label: 'Total points de vente', value: String(salesPoints.filter((sp) => matchesSelectedDriver(sp.driver_id)).length) },
+            { label: 'Points actifs', value: String(salesPoints.filter((sp) => matchesSelectedDriver(sp.driver_id) && sp.is_active).length) },
+            { label: 'Périmètre', value: reportScopeLabel },
           ],
         };
       },
@@ -1026,10 +1035,10 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
       roles: [2, 3, 4, 5, 6, 7],
       isMapReport: true,
       build: async () => {
-        const filteredDeposits = deposits.filter((d) => inRange(d.deposited_at));
-        const filteredReturns = returns.filter((r) => inRange(r.returned_at));
+        const filteredDeposits = deposits.filter((d) => inRange(d.deposited_at) && matchesSelectedDriver(batches.find((batch) => batch.id === d.batch_id)?.driver_id));
+        const filteredReturns = returns.filter((r) => inRange(r.returned_at) && matchesSelectedDriver(r.driver_id ?? batches.find((batch) => batch.id === r.batch_id)?.driver_id));
         const markers: MapMarker[] = salesPoints
-          .filter((sp) => sp.gps_lat != null && sp.gps_lng != null)
+          .filter((sp) => sp.gps_lat != null && sp.gps_lng != null && matchesSelectedDriver(sp.driver_id))
           .map((sp) => {
             const spDeposits = filteredDeposits.filter((d) => d.sales_point_id === sp.id);
             const spReturns = filteredReturns.filter((r) => r.sales_point_id === sp.id);
@@ -1095,7 +1104,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
         const data = await r.build(fromDate, toDate);
         return {
           title: r.title,
-          subtitle: `Période: ${fmtDate(fromDate)} — ${fmtDate(toDate)}`,
+          subtitle: `Période: ${fmtDate(fromDate)} — ${fmtDate(toDate)} · ${reportScopeLabel}`,
           columns: data.columns,
           rows: data.rows,
           summary: data.summary,
@@ -1122,10 +1131,10 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
 
       if (report.isMapReport && format === 'pdf') {
         // Build markers from the report build (recompute for rendering)
-        const filteredDeposits = deposits.filter((d) => inRange(d.deposited_at));
-        const filteredReturns = returns.filter((r) => inRange(r.returned_at));
+        const filteredDeposits = deposits.filter((d) => inRange(d.deposited_at) && matchesSelectedDriver(batches.find((batch) => batch.id === d.batch_id)?.driver_id));
+        const filteredReturns = returns.filter((r) => inRange(r.returned_at) && matchesSelectedDriver(r.driver_id ?? batches.find((batch) => batch.id === r.batch_id)?.driver_id));
         const markers: MapMarker[] = salesPoints
-          .filter((sp) => sp.gps_lat != null && sp.gps_lng != null)
+          .filter((sp) => sp.gps_lat != null && sp.gps_lng != null && matchesSelectedDriver(sp.driver_id))
           .map((sp) => {
             const spDeposits = filteredDeposits.filter((d) => d.sales_point_id === sp.id);
             const spReturns = filteredReturns.filter((r) => r.sales_point_id === sp.id);
@@ -1202,7 +1211,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
       } else if (format === 'pdf') {
         downloadPdfReport({
           title: report.title,
-          subtitle: `Période: ${fmtDate(fromDate)} — ${fmtDate(toDate)}`,
+          subtitle: `Période: ${fmtDate(fromDate)} — ${fmtDate(toDate)} · ${reportScopeLabel}`,
           columns: data.columns,
           rows: data.rows,
           summary: data.summary,
@@ -1278,6 +1287,14 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
             <label className="block text-xs text-gray-500 mb-1">Au</label>
             <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
               className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Commercial — rapports réseau</label>
+            <select value={reportDriverId} onChange={(e) => setReportDriverId(e.target.value)}
+              className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none bg-white min-w-[190px]">
+              <option value="all">Tous les commerciaux</option>
+              {drivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.full_name}</option>)}
+            </select>
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Type de personnel</label>
