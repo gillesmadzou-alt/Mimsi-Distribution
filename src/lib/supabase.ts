@@ -369,6 +369,14 @@ export interface AccountingEntry {
   source_table?: string | null;
   source_id?: string | null;
   source_event?: string | null;
+  journal_code: 'CA' | 'BQ' | 'VE' | 'OD';
+  operation_nature: string;
+  account_number: string;
+  account_label: string;
+  account_class: number;
+  counterpart_account_number: string;
+  counterpart_account_label: string;
+  counterpart_account_class: number;
 }
 
 export interface ComplianceCheck {
