@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Banknote, Building2, CircleDollarSign, Loader2, Pencil, Plus, Search, Trash2, Users, X } from 'lucide-react';
-import { supabase, formatFCFA, getRoleAccessLevel, type AccountingEntry, type Receivable } from '@/lib/supabase';
+import { supabase, formatFCFA, getRoleAccessLevel, type AccountingEntry } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useConfirm } from '@/contexts/ConfirmContext';
@@ -62,7 +62,6 @@ export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page:
   const { confirmDialog } = useConfirm();
   const [activeTab, setActiveTab] = useState<Tab>('cash');
   const [entries, setEntries] = useState<AccountingEntry[]>([]);
-  const [receivables, setReceivables] = useState<(Receivable & { sales_point?: { id: string; name: string } })[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,21 +76,17 @@ export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page:
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [entriesResult, receivablesResult] = await Promise.all([
-      supabase.from('accounting_entries').select('*').order('entry_date', { ascending: false }).order('created_at', { ascending: false }),
-      supabase.from('receivables').select('*, sales_point:sales_points(id, name)').order('created_at', { ascending: false }),
-    ]);
-    if (entriesResult.error || receivablesResult.error) {
-      setError(entriesResult.error?.message ?? receivablesResult.error?.message ?? 'Chargement impossible.');
+    const entriesResult = await supabase.from('accounting_entries').select('*').order('entry_date', { ascending: false }).order('created_at', { ascending: false });
+    if (entriesResult.error) {
+      setError(entriesResult.error.message ?? 'Chargement impossible.');
     } else {
       setEntries((entriesResult.data as AccountingEntry[]) ?? []);
-      setReceivables((receivablesResult.data as typeof receivables) ?? []);
     }
     setLoading(false);
   }, []);
 
   useEffect(() => { void loadData(); }, [loadData]);
-  useRealtimeSubscription('account-keeping-page', ['accounting_entries', 'receivables', 'receivable_payments'], loadData);
+  useRealtimeSubscription('account-keeping-page', ['accounting_entries'], loadData);
 
   const allAccountEntries = useMemo(() => {
     const accountType = activeTab === 'bank' ? 'bank' : 'cash';
@@ -115,19 +110,10 @@ export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page:
 
   const clientBalances = useMemo<ClientBalance[]>(() => {
     const grouped = new Map<string, ClientBalance>();
-    for (const receivable of receivables) {
-      const id = receivable.sales_point_id;
-      const current = grouped.get(id) ?? { id, name: receivable.sales_point?.name ?? 'Client sans nom', billed: 0, paid: 0, due: 0 };
-      current.billed += Number(receivable.amount_fcfa);
-      current.paid += Number(receivable.amount_paid);
-      current.due += Number(receivable.amount_fcfa) - Number(receivable.amount_paid);
-      grouped.set(id, current);
-    }
     for (const entry of entries.filter((item) => item.account_type === 'client' && item.client_name)) {
       const normalizedName = entry.client_name!.trim().toLowerCase();
-      const id = `manual:${normalizedName}`;
-      const existing = [...grouped.values()].find((client) => client.name.trim().toLowerCase() === normalizedName);
-      const current = existing ?? grouped.get(id) ?? { id, name: entry.client_name!, billed: 0, paid: 0, due: 0 };
+      const id = `client:${normalizedName}`;
+      const current = grouped.get(id) ?? { id, name: entry.client_name!, billed: 0, paid: 0, due: 0 };
       if (entry.movement_type === 'expense') current.billed += Number(entry.amount_fcfa);
       else current.paid += Number(entry.amount_fcfa);
       current.due = current.billed - current.paid;
@@ -135,7 +121,7 @@ export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page:
     }
     const query = search.trim().toLowerCase();
     return [...grouped.values()].filter((client) => !query || client.name.toLowerCase().includes(query)).sort((a, b) => b.due - a.due);
-  }, [entries, receivables, search]);
+  }, [entries, search]);
 
   const manualClientEntries = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -147,7 +133,7 @@ export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page:
   const allManualClientEntries = useMemo(() => entries.filter((entry) => entry.account_type === 'client'), [entries]);
   const clientEntryBalances = useMemo(() => buildRunningBalances(allManualClientEntries, true), [allManualClientEntries]);
   const accessLevel = getRoleAccessLevel(profile?.role ?? 1, profile?.access_level);
-  const canManageEntry = (entry: AccountingEntry) => accessLevel >= 5 || entry.created_by === profile?.id;
+  const canManageEntry = (entry: AccountingEntry) => !entry.source_table && (accessLevel >= 5 || entry.created_by === profile?.id);
 
   const openCreate = () => {
     setEditingEntry(null);
@@ -236,7 +222,7 @@ export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page:
             {clientBalances.length === 0 && <p className="p-10 text-center text-sm text-gray-400">Aucun compte client trouvé.</p>}
           </div>
           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-            <div className="border-b border-gray-100 px-4 py-3"><h3 className="font-semibold text-gray-900">Ajustements manuels des clients</h3><p className="text-xs text-gray-500">Les créances automatiques restent inchangées.</p></div>
+            <div className="border-b border-gray-100 px-4 py-3"><h3 className="font-semibold text-gray-900">Mouvements des comptes clients</h3><p className="text-xs text-gray-500">Les écritures automatiques sont protégées ; les ajustements manuels restent modifiables.</p></div>
             <div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50"><tr>{['Date', 'Client', 'Libellé', 'Entrée / débit', 'Sortie / crédit', 'Solde', 'Actions'].map((header) => <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{header}</th>)}</tr></thead><tbody className="divide-y divide-gray-100">
               {manualClientEntries.map((entry) => <tr key={entry.id}><td className="px-4 py-3 text-sm text-gray-500">{new Date(`${entry.entry_date}T00:00:00`).toLocaleDateString('fr-FR')}</td><td className="px-4 py-3 text-sm font-medium">{entry.client_name}</td><td className="px-4 py-3 text-sm">{entry.label}</td><td className="px-4 py-3 text-sm font-semibold text-amber-700">{entry.movement_type === 'expense' ? formatFCFA(entry.amount_fcfa) : '—'}</td><td className="px-4 py-3 text-sm font-semibold text-emerald-700">{entry.movement_type === 'income' ? formatFCFA(entry.amount_fcfa) : '—'}</td><td className="px-4 py-3 text-sm font-bold text-gray-900">{formatFCFA(clientEntryBalances.get(entry.id) ?? 0)}</td><td className="px-4 py-3"><EntryActions entry={entry} allowed={canManageEntry(entry)} onEdit={openEdit} onDelete={deleteEntry} /></td></tr>)}
             </tbody></table></div>{manualClientEntries.length === 0 && <p className="p-8 text-center text-sm text-gray-400">Aucun ajustement manuel.</p>}

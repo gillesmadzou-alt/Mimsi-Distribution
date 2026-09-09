@@ -366,6 +366,9 @@ export interface AccountingEntry {
   created_by: string;
   created_at: string;
   updated_at: string;
+  source_table?: string | null;
+  source_id?: string | null;
+  source_event?: string | null;
 }
 
 export interface ComplianceCheck {

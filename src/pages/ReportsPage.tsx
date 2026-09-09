@@ -315,17 +315,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
   };
 
   const buildClientLedger = () => {
-    const operations = [
-      ...receivables.map((receivable) => ({
-        id: `receivable:${receivable.id}`,
-        date: receivable.created_at.slice(0, 10),
-        createdAt: receivable.created_at,
-        client: receivable.sales_point?.name ?? 'Client sans nom',
-        label: 'Créance automatique',
-        debit: Number(receivable.amount_fcfa),
-        credit: Number(receivable.amount_paid),
-      })),
-      ...accountingEntries.filter((entry) => entry.account_type === 'client').map((entry) => ({
+    const operations = accountingEntries.filter((entry) => entry.account_type === 'client').map((entry) => ({
         id: `entry:${entry.id}`,
         date: entry.entry_date,
         createdAt: entry.created_at,
@@ -333,8 +323,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
         label: entry.label,
         debit: entry.movement_type === 'expense' ? Number(entry.amount_fcfa) : 0,
         credit: entry.movement_type === 'income' ? Number(entry.amount_fcfa) : 0,
-      })),
-    ].filter((operation) => operation.date <= toDate)
+      })).filter((operation) => operation.date <= toDate)
       .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
     const balances = new Map<string, number>();
     const openingBalances = new Map<string, number>();
