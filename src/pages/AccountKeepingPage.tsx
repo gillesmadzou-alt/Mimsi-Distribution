@@ -70,7 +70,7 @@ export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page:
   const [editingEntry, setEditingEntry] = useState<AccountingEntry | null>(null);
   const [form, setForm] = useState({
     movement_type: 'income' as AccountingEntry['movement_type'], entry_date: new Date().toISOString().slice(0, 10),
-    label: '', amount: '', reference: '', payment_method: 'especes' as AccountingEntry['payment_method'], notes: '', client_name: '',
+    label: '', amount: '', payment_method: 'especes' as AccountingEntry['payment_method'], notes: '', client_name: '',
   });
 
   const loadData = useCallback(async () => {
@@ -137,14 +137,14 @@ export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page:
 
   const openCreate = () => {
     setEditingEntry(null);
-    setForm({ movement_type: activeTab === 'clients' ? 'expense' : 'income', entry_date: new Date().toISOString().slice(0, 10), label: '', amount: '', reference: '', payment_method: 'especes', notes: '', client_name: '' });
+    setForm({ movement_type: activeTab === 'clients' ? 'expense' : 'income', entry_date: new Date().toISOString().slice(0, 10), label: '', amount: '', payment_method: 'especes', notes: '', client_name: '' });
     setShowForm(true);
   };
 
   const openEdit = (entry: AccountingEntry) => {
     setEditingEntry(entry);
     setActiveTab(entry.account_type === 'client' ? 'clients' : entry.account_type);
-    setForm({ movement_type: entry.movement_type, entry_date: entry.entry_date, label: entry.label, amount: String(entry.amount_fcfa), reference: entry.reference ?? '', payment_method: entry.payment_method, notes: entry.notes ?? '', client_name: entry.client_name ?? '' });
+    setForm({ movement_type: entry.movement_type, entry_date: entry.entry_date, label: entry.label, amount: String(entry.amount_fcfa), payment_method: entry.payment_method, notes: entry.notes ?? '', client_name: entry.client_name ?? '' });
     setShowForm(true);
   };
 
@@ -163,7 +163,7 @@ export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page:
     const payload = {
       account_type: activeTab === 'clients' ? 'client' : activeTab === 'bank' ? 'bank' : 'cash', movement_type: form.movement_type,
       entry_date: form.entry_date, label: form.label.trim(), amount_fcfa: Number(form.amount),
-      reference: form.reference.trim() || null, payment_method: form.payment_method,
+      payment_method: form.payment_method,
       notes: form.notes.trim() || null, client_name: activeTab === 'clients' ? form.client_name.trim() : null,
     };
     const result = editingEntry
@@ -223,8 +223,8 @@ export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page:
           </div>
           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
             <div className="border-b border-gray-100 px-4 py-3"><h3 className="font-semibold text-gray-900">Mouvements des comptes clients</h3><p className="text-xs text-gray-500">Les écritures automatiques sont protégées ; les ajustements manuels restent modifiables.</p></div>
-            <div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50"><tr>{['Date', 'Client', 'Libellé', 'Entrée / débit', 'Sortie / crédit', 'Solde', 'Actions'].map((header) => <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{header}</th>)}</tr></thead><tbody className="divide-y divide-gray-100">
-              {manualClientEntries.map((entry) => <tr key={entry.id}><td className="px-4 py-3 text-sm text-gray-500">{new Date(`${entry.entry_date}T00:00:00`).toLocaleDateString('fr-FR')}</td><td className="px-4 py-3 text-sm font-medium">{entry.client_name}</td><td className="px-4 py-3 text-sm">{entry.label}</td><td className="px-4 py-3 text-sm font-semibold text-amber-700">{entry.movement_type === 'expense' ? formatFCFA(entry.amount_fcfa) : '—'}</td><td className="px-4 py-3 text-sm font-semibold text-emerald-700">{entry.movement_type === 'income' ? formatFCFA(entry.amount_fcfa) : '—'}</td><td className="px-4 py-3 text-sm font-bold text-gray-900">{formatFCFA(clientEntryBalances.get(entry.id) ?? 0)}</td><td className="px-4 py-3"><EntryActions entry={entry} allowed={canManageEntry(entry)} onEdit={openEdit} onDelete={deleteEntry} /></td></tr>)}
+            <div className="overflow-x-auto"><table className="w-full"><thead className="bg-gray-50"><tr>{['Date', 'Référence', 'Client', 'Libellé', 'Entrée / débit', 'Sortie / crédit', 'Solde', 'Actions'].map((header) => <th key={header} className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-500">{header}</th>)}</tr></thead><tbody className="divide-y divide-gray-100">
+              {manualClientEntries.map((entry) => <tr key={entry.id}><td className="px-4 py-3 text-sm text-gray-500">{new Date(`${entry.entry_date}T00:00:00`).toLocaleDateString('fr-FR')}</td><td className="px-4 py-3 text-xs font-semibold text-gray-600">{entry.reference}</td><td className="px-4 py-3 text-sm font-medium">{entry.client_name}</td><td className="px-4 py-3 text-sm">{entry.label}</td><td className="px-4 py-3 text-sm font-semibold text-amber-700">{entry.movement_type === 'expense' ? formatFCFA(entry.amount_fcfa) : '—'}</td><td className="px-4 py-3 text-sm font-semibold text-emerald-700">{entry.movement_type === 'income' ? formatFCFA(entry.amount_fcfa) : '—'}</td><td className="px-4 py-3 text-sm font-bold text-gray-900">{formatFCFA(clientEntryBalances.get(entry.id) ?? 0)}</td><td className="px-4 py-3"><EntryActions entry={entry} allowed={canManageEntry(entry)} onEdit={openEdit} onDelete={deleteEntry} /></td></tr>)}
             </tbody></table></div>{manualClientEntries.length === 0 && <p className="p-8 text-center text-sm text-gray-400">Aucun ajustement manuel.</p>}
           </div>
         </>
@@ -244,7 +244,7 @@ export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page:
         <div className="grid grid-cols-2 gap-3"><select value={form.movement_type} onChange={(event) => setForm({ ...form, movement_type: event.target.value as AccountingEntry['movement_type'] })} className="rounded-xl border border-gray-200 px-3 py-2.5"><option value="income">{activeTab === 'clients' ? 'Crédit / règlement' : 'Entrée'}</option><option value="expense">{activeTab === 'clients' ? 'Débit / nouvelle dette' : 'Sortie'}</option></select><input type="date" required value={form.entry_date} onChange={(event) => setForm({ ...form, entry_date: event.target.value })} className="rounded-xl border border-gray-200 px-3 py-2.5" /></div>
         <input required value={form.label} onChange={(event) => setForm({ ...form, label: event.target.value })} placeholder="Libellé de l’écriture" className="w-full rounded-xl border border-gray-200 px-3 py-2.5" />
         <div className="grid grid-cols-2 gap-3"><input type="number" min="1" required value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder="Montant FCFA" className="rounded-xl border border-gray-200 px-3 py-2.5" /><select value={form.payment_method} onChange={(event) => setForm({ ...form, payment_method: event.target.value as AccountingEntry['payment_method'] })} className="rounded-xl border border-gray-200 px-3 py-2.5">{Object.entries(PAYMENT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
-        <input value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} placeholder="Référence (facultatif)" className="w-full rounded-xl border border-gray-200 px-3 py-2.5" /><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Notes (facultatif)" rows={2} className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2.5" />
+        <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800">La référence est générée automatiquement selon le compte, l’année et l’ordre chronologique. Une saisie ancienne renumérote automatiquement les écritures concernées.</p><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Notes (facultatif)" rows={2} className="w-full resize-none rounded-xl border border-gray-200 px-3 py-2.5" />
         <button disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 py-2.5 font-medium text-white disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CircleDollarSign className="h-4 w-4" />} {editingEntry ? 'Enregistrer les modifications' : 'Enregistrer'}</button>
       </form></div></div>}
     </div>

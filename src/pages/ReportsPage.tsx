@@ -320,6 +320,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
         date: entry.entry_date,
         createdAt: entry.created_at,
         client: entry.client_name?.trim() || 'Client sans nom',
+        reference: entry.reference ?? '—',
         label: entry.label,
         debit: entry.movement_type === 'expense' ? Number(entry.amount_fcfa) : 0,
         credit: entry.movement_type === 'income' ? Number(entry.amount_fcfa) : 0,
@@ -342,6 +343,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
     return {
       columns: [
         { header: 'Date', key: 'date' },
+        { header: 'Référence', key: 'reference' },
         { header: 'Client', key: 'client' },
         { header: 'Libellé', key: 'label' },
         { header: 'Entrée / débit', key: 'debit', align: 'right' as const },
@@ -349,7 +351,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
         { header: 'Solde client', key: 'balance', align: 'right' as const },
       ],
       rows: periodRows.map((row) => ({
-        date: fmtDate(row.date), client: row.client, label: row.label,
+        date: fmtDate(row.date), reference: row.reference, client: row.client, label: row.label,
         debit: row.debit ? formatFCFA(row.debit) : '—',
         credit: row.credit ? formatFCFA(row.credit) : '—', balance: formatFCFA(row.balance),
       })),
