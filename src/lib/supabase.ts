@@ -977,8 +977,10 @@ export const INGREDIENT_CATEGORIES = [
   'Farines', 'Levures', 'Sucres', 'Œufs', 'Produits frais', 'Matières grasses', 'Arômes & parfums', 'Emballages', 'Autres',
 ] as const;
 
+// jsPDF's built-in fonts do not reliably render French narrow no-break spaces.
+// Use ordinary spaces so "4 000 FCFA" stays readable in the PWA and its exports.
 export const formatFCFA = (amount: number) =>
-  new Intl.NumberFormat('fr-FR').format(amount) + ' FCFA';
+  new Intl.NumberFormat('fr-FR').format(amount).replace(/[\u202F\u00A0]/g, ' ') + ' FCFA';
 
 export const logAudit = async (
   action: string,

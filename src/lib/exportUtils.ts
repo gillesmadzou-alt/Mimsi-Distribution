@@ -34,20 +34,7 @@ export function generatePdfReport({ title, subtitle, columns, rows, summary, fil
   if (subtitle) doc.text(subtitle, 14, 27);
   doc.text(`Généré le ${formatBrazzavilleDateTime(new Date())}`, pageWidth - 14, 20, { align: 'right' });
 
-  let startY = subtitle ? 34 : 27;
-
-  if (summary && summary.length > 0) {
-    autoTable(doc, {
-      startY,
-      head: [['Indicateur', 'Valeur']],
-      body: summary.map((s) => [s.label, s.value]),
-      theme: 'grid',
-      headStyles: { fillColor: [251, 146, 60], textColor: 255 },
-      styles: { fontSize: 9, cellPadding: 3 },
-      margin: { left: 14, right: 14 },
-    });
-    startY = (doc as any).lastAutoTable.finalY + 10;
-  }
+  const startY = subtitle ? 34 : 27;
 
   autoTable(doc, {
     startY,
@@ -63,6 +50,18 @@ export function generatePdfReport({ title, subtitle, columns, rows, summary, fil
     }, {} as Record<number, any>),
     margin: { left: 14, right: 14 },
   });
+
+  if (summary && summary.length > 0) {
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 10,
+      head: [['Totaux et indicateurs', 'Valeur']],
+      body: summary.map((s) => [s.label, s.value]),
+      theme: 'grid',
+      headStyles: { fillColor: [251, 146, 60], textColor: 255 },
+      styles: { fontSize: 9, cellPadding: 3 },
+      margin: { left: 14, right: 14 },
+    });
+  }
 
   return doc.output('blob');
 }
@@ -107,13 +106,13 @@ export function downloadExcelReport({ title, columns, rows, summary, fileName }:
   sheetData.push([`Généré le ${formatBrazzavilleDateTime(new Date())}`]);
   sheetData.push([]);
 
-  if (summary && summary.length > 0) {
-    summary.forEach((s) => sheetData.push([s.label, s.value]));
-    sheetData.push([]);
-  }
-
   sheetData.push(columns.map((c) => c.header));
   rows.forEach((r) => sheetData.push(columns.map((c) => r[c.key] ?? '')));
+  if (summary && summary.length > 0) {
+    sheetData.push([]);
+    sheetData.push(['Totaux et indicateurs', 'Valeur']);
+    summary.forEach((s) => sheetData.push([s.label, s.value]));
+  }
 
   const ws = XLSX.utils.aoa_to_sheet(sheetData);
   ws['!cols'] = columns.map((c) => ({ wch: Math.max(c.header.length + 2, 14) }));
@@ -143,19 +142,6 @@ export function downloadMultiPdfReport(reports: PdfOptions[], fileName: string) 
 
     let startY = report.subtitle ? 34 : 27;
 
-    if (report.summary && report.summary.length > 0) {
-      autoTable(doc, {
-        startY,
-        head: [['Indicateur', 'Valeur']],
-        body: report.summary.map((s) => [s.label, s.value]),
-        theme: 'grid',
-        headStyles: { fillColor: [251, 146, 60], textColor: 255 },
-        styles: { fontSize: 9, cellPadding: 3 },
-        margin: { left: 14, right: 14 },
-      });
-      startY = (doc as any).lastAutoTable.finalY + 10;
-    }
-
     if (report.rows.length > 0) {
       autoTable(doc, {
         startY,
@@ -169,6 +155,18 @@ export function downloadMultiPdfReport(reports: PdfOptions[], fileName: string) 
           else if (c.align === 'center') acc[i] = { halign: 'center' };
           return acc;
         }, {} as Record<number, any>),
+        margin: { left: 14, right: 14 },
+      });
+    }
+
+    if (report.summary && report.summary.length > 0) {
+      autoTable(doc, {
+        startY: report.rows.length > 0 ? (doc as any).lastAutoTable.finalY + 10 : startY,
+        head: [['Totaux et indicateurs', 'Valeur']],
+        body: report.summary.map((s) => [s.label, s.value]),
+        theme: 'grid',
+        headStyles: { fillColor: [251, 146, 60], textColor: 255 },
+        styles: { fontSize: 9, cellPadding: 3 },
         margin: { left: 14, right: 14 },
       });
     }
@@ -187,13 +185,13 @@ export function downloadMultiExcelReport(reports: ExcelOptions[], fileName: stri
     sheetData.push([`Généré le ${formatBrazzavilleDateTime(new Date())}`]);
     sheetData.push([]);
 
-    if (report.summary && report.summary.length > 0) {
-      report.summary.forEach((s) => sheetData.push([s.label, s.value]));
-      sheetData.push([]);
-    }
-
     sheetData.push(report.columns.map((c) => c.header));
     report.rows.forEach((r) => sheetData.push(report.columns.map((c) => r[c.key] ?? '')));
+    if (report.summary && report.summary.length > 0) {
+      sheetData.push([]);
+      sheetData.push(['Totaux et indicateurs', 'Valeur']);
+      report.summary.forEach((s) => sheetData.push([s.label, s.value]));
+    }
 
     const ws = XLSX.utils.aoa_to_sheet(sheetData);
     ws['!cols'] = report.columns.map((c) => ({ wch: Math.max(c.header.length + 2, 14) }));
