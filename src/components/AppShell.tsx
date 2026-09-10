@@ -7,7 +7,7 @@ import {
   LogOut, Truck, ChevronDown, ChevronRight, ArrowLeft,
   BarChart2, ScrollText, Wallet, ShieldCheck, Recycle,
   RefreshCw, CalendarOff, Trophy, History, ChefHat, CalendarDays, FlaskConical, FileText, BookOpen,
-  Activity, Sparkles,
+  Activity, Sparkles, Megaphone,
   Bell, Map, Network, Barcode, UserCog, Menu, X, WifiOff, Wifi, CloudOff,
   ClipboardList, Receipt, UserCheck, DownloadCloud, DatabaseBackup, Loader2, CheckCircle2, PiggyBank,
   Camera, KeyRound,
@@ -29,7 +29,7 @@ export type PageId =
   | 'consignments' | 'restock' | 'leave'
   | 'leaderboard' | 'audit' | 'production' | 'map' | 'org-chart'
   | 'barcodes' | 'users' | 'approvals' | 'scheduling' | 'ingredients' | 'reports'
-  | 'observations' | 'expenses' | 'attendance' | 'notification-archive';
+  | 'observations' | 'expenses' | 'attendance' | 'notification-archive' | 'marketing';
 
 interface NavSection {
   label: string;
@@ -103,6 +103,12 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: 'audit', label: 'Journal des actions', description: 'Trace de toutes les actions effectuées dans l\'application', icon: History, minRole: 4 },
       { id: 'org-chart', label: 'Organigramme', description: 'Structure hiérarchique du personnel', icon: Network, minRole: 1 },
       { id: 'observations', label: 'Observations', description: 'Notes et remarques du terrain partagées par tout le personnel', icon: ClipboardList, minRole: 1 },
+    ],
+  },
+  {
+    label: 'Marketing',
+    items: [
+      { id: 'marketing', label: 'Marketing & réseaux sociaux', description: 'Stratégie Facebook/WhatsApp/Instagram/TikTok et commandes reçues via automatisation', icon: Megaphone, minRole: 4 },
     ],
   },
   {

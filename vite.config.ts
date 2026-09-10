@@ -12,6 +12,6 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['lucide-react'],
-    include: ['leaflet', 'qrcode-generator', 'html2canvas'],
+    include: ['leaflet', 'html2canvas'],
   },
 });

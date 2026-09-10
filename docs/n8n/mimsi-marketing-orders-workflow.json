@@ -1,0 +1,166 @@
+{
+  "name": "Mimsi Distribution - Commandes réseaux sociaux",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "mimsi-marketing/meta",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-meta-verify",
+      "name": "Meta - Vérification webhook (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-400, -200],
+      "notes": "Meta appelle cette URL une seule fois, à la création de l'abonnement webhook dans Meta for Developers, pour vérifier que tu contrôles bien ce endpoint."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "leftValue": "={{$json.query[\"hub.verify_token\"]}}",
+              "rightValue": "CHANGE_ME_META_VERIFY_TOKEN",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-token-ok",
+      "name": "Token de vérification correct ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-160, -200],
+      "notes": "Remplace CHANGE_ME_META_VERIFY_TOKEN par la valeur que tu choisis toi-même et que tu renseignes aussi dans Meta for Developers > Webhooks."
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{$json.query[\"hub.challenge\"]}}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "respond-challenge",
+      "name": "Répondre avec le challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [80, -280]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Forbidden",
+        "options": { "responseCode": 403 }
+      },
+      "id": "respond-forbidden",
+      "name": "Refuser (token invalide)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [80, -120]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mimsi-marketing/meta",
+        "responseMode": "onReceived",
+        "responseData": "success",
+        "options": {}
+      },
+      "id": "webhook-meta-events",
+      "name": "Meta - Évènements (POST)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-400, 60],
+      "notes": "Reçoit tous les messages WhatsApp, Messenger (Facebook) et Instagram Direct — ils partagent cette même souscription webhook Meta, différenciés par body.object."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalise un évènement Meta (WhatsApp / Messenger / Instagram) en un\n// format commun. Renvoie null (aucun item) si ce n'est pas un message\n// entrant exploitable (accusés de lecture, statuts de livraison, etc.).\nconst body = $input.first().json.body || {};\nconst results = [];\n\nif (body.object === 'whatsapp_business_account') {\n  for (const entry of body.entry || []) {\n    for (const change of entry.changes || []) {\n      for (const msg of change.value?.messages || []) {\n        results.push({\n          channel: 'whatsapp',\n          customer_name: change.value?.contacts?.[0]?.profile?.name || null,\n          customer_phone: msg.from || null,\n          message: msg.text?.body || msg.button?.text || null,\n          external_id: msg.id,\n          order_details: null,\n        });\n      }\n    }\n  }\n} else if (body.object === 'page') {\n  for (const entry of body.entry || []) {\n    for (const event of entry.messaging || []) {\n      if (!event.message || event.message.is_echo) continue;\n      results.push({\n        channel: 'facebook',\n        customer_name: null,\n        customer_phone: event.sender?.id || null,\n        message: event.message.text || null,\n        external_id: event.message.mid,\n        order_details: null,\n      });\n    }\n  }\n} else if (body.object === 'instagram') {\n  for (const entry of body.entry || []) {\n    for (const event of entry.messaging || []) {\n      if (!event.message || event.message.is_echo) continue;\n      results.push({\n        channel: 'instagram',\n        customer_name: null,\n        customer_phone: event.sender?.id || null,\n        message: event.message.text || null,\n        external_id: event.message.mid,\n        order_details: null,\n      });\n    }\n  }\n}\n\nreturn results.map((r) => ({ json: { ...r, raw_payload: body } }));"
+      },
+      "id": "code-normalize-meta",
+      "name": "Normaliser (WhatsApp / FB / IG)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-160, 60],
+      "notes": "Adapte ce code si Meta change la structure de ses payloads (vérifie dans les logs n8n en cas de doute)."
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mimsi-marketing/tiktok",
+        "responseMode": "onReceived",
+        "responseData": "success",
+        "options": {}
+      },
+      "id": "webhook-tiktok",
+      "name": "TikTok - Évènements (POST)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-400, 340],
+      "notes": "URL à renseigner dans TikTok for Business (Leads / Direct Messages), une fois ton app développeur TikTok créée."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Adapte selon le format réel envoyé par TikTok (Leads Gen ou DM) une\n// fois ton app développeur TikTok approuvée — la structure exacte dépend\n// du produit TikTok utilisé (TikTok Lead Generation vs TikTok Shop).\nconst body = $input.first().json.body || {};\n\nreturn [{\n  json: {\n    channel: 'tiktok',\n    customer_name: body.lead_name || body.name || null,\n    customer_phone: body.phone_number || body.phone || null,\n    message: body.message || JSON.stringify(body).slice(0, 1000),\n    external_id: body.lead_id || body.message_id || null,\n    order_details: null,\n    raw_payload: body,\n  },\n}];"
+      },
+      "id": "code-normalize-tiktok",
+      "name": "Normaliser (TikTok)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-160, 340]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://REMPLACE-PAR-TON-PROJET.supabase.co/functions/v1/receive-marketing-order",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "x-webhook-secret", "value": "CHANGE_ME_MARKETING_WEBHOOK_SECRET" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { channel: $json.channel, customer_name: $json.customer_name, customer_phone: $json.customer_phone, message: $json.message, external_id: $json.external_id, order_details: $json.order_details, raw_payload: $json.raw_payload } }}",
+        "options": {}
+      },
+      "id": "http-send-to-mimsi",
+      "name": "Envoyer à Mimsi Distribution",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [120, 200],
+      "notes": "Remplace l'URL par celle affichée dans l'app (onglet Marketing > Automatisation) et le secret par la valeur de MARKETING_WEBHOOK_SECRET configurée côté Supabase (supabase secrets set MARKETING_WEBHOOK_SECRET=...)."
+    }
+  ],
+  "connections": {
+    "Meta - Vérification webhook (GET)": {
+      "main": [[{ "node": "Token de vérification correct ?", "type": "main", "index": 0 }]]
+    },
+    "Token de vérification correct ?": {
+      "main": [
+        [{ "node": "Répondre avec le challenge", "type": "main", "index": 0 }],
+        [{ "node": "Refuser (token invalide)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Meta - Évènements (POST)": {
+      "main": [[{ "node": "Normaliser (WhatsApp / FB / IG)", "type": "main", "index": 0 }]]
+    },
+    "Normaliser (WhatsApp / FB / IG)": {
+      "main": [[{ "node": "Envoyer à Mimsi Distribution", "type": "main", "index": 0 }]]
+    },
+    "TikTok - Évènements (POST)": {
+      "main": [[{ "node": "Normaliser (TikTok)", "type": "main", "index": 0 }]]
+    },
+    "Normaliser (TikTok)": {
+      "main": [[{ "node": "Envoyer à Mimsi Distribution", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "mimsi-distribution-marketing-orders-template"
+  }
+}

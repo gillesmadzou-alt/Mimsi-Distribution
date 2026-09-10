@@ -1150,3 +1150,54 @@ export interface WeddingOrder {
   driver?: Driver;
   pot_type?: PotType;
 };
+
+export type MarketingChannel = 'facebook' | 'whatsapp' | 'instagram' | 'tiktok' | 'autre';
+export type MarketingOrderStatus = 'nouveau' | 'en_cours' | 'traite' | 'annule';
+
+export const MARKETING_CHANNEL_LABELS: Record<MarketingChannel, string> = {
+  facebook: 'Facebook',
+  whatsapp: 'WhatsApp',
+  instagram: 'Instagram',
+  tiktok: 'TikTok',
+  autre: 'Autre',
+};
+
+export const MARKETING_CHANNEL_META: Record<MarketingChannel, { color: string; bgColor: string }> = {
+  facebook: { color: 'text-blue-700', bgColor: 'bg-blue-50' },
+  whatsapp: { color: 'text-emerald-700', bgColor: 'bg-emerald-50' },
+  instagram: { color: 'text-pink-700', bgColor: 'bg-pink-50' },
+  tiktok: { color: 'text-gray-800', bgColor: 'bg-gray-100' },
+  autre: { color: 'text-gray-600', bgColor: 'bg-gray-50' },
+};
+
+export const MARKETING_ORDER_STATUS_LABELS: Record<MarketingOrderStatus, string> = {
+  nouveau: 'Nouveau',
+  en_cours: 'En cours',
+  traite: 'Traité',
+  annule: 'Annulé',
+};
+
+export const MARKETING_ORDER_STATUS_META: Record<MarketingOrderStatus, { color: string; bgColor: string; dot: string }> = {
+  nouveau: { color: 'text-amber-700', bgColor: 'bg-amber-50', dot: 'bg-amber-500' },
+  en_cours: { color: 'text-blue-700', bgColor: 'bg-blue-50', dot: 'bg-blue-500' },
+  traite: { color: 'text-emerald-700', bgColor: 'bg-emerald-50', dot: 'bg-emerald-500' },
+  annule: { color: 'text-red-700', bgColor: 'bg-red-50', dot: 'bg-red-500' },
+};
+
+export interface MarketingOrder {
+  id: string;
+  channel: MarketingChannel;
+  status: MarketingOrderStatus;
+  customer_name: string | null;
+  customer_phone: string | null;
+  message: string | null;
+  order_details: Record<string, unknown> | null;
+  sales_point_id: string | null;
+  assigned_to: string | null;
+  external_id: string | null;
+  raw_payload: Record<string, unknown> | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  sales_point?: SalesPoint;
+}

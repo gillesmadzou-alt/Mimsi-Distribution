@@ -17,7 +17,7 @@ import { useSync } from '@/contexts/SyncContext';
 import BarcodeScanner from '@/components/BarcodeScanner';
 import {
   Plus, X, Truck, Package, CheckCircle2, Clock, MapPin, Camera, Wallet,
-  UserCheck, ScanLine, Trash2,
+  UserCheck, ScanLine, Trash2, Calendar,
   Pencil, Search, ChevronDown, ChevronRight, HandCoins, Store, Receipt, FileText, AlertTriangle, CloudOff,
 } from 'lucide-react';
 
@@ -30,6 +30,15 @@ function deliveredPotsFromDeposits(batch: DeliveryBatch & { deposits?: Deposit[]
     .filter((deposit) => (deposit as Deposit & { is_confirmed?: boolean }).is_confirmed !== false)
     .reduce((total, deposit) => total + Number(deposit.quantity ?? 0), 0);
 }
+
+/** Date du jour au format YYYY-MM-DD, en heure locale (pas UTC). */
+function todayLocalISODate(): string {
+  const now = new Date();
+  const tzOffsetMs = now.getTimezoneOffset() * 60000;
+  return new Date(now.getTime() - tzOffsetMs).toISOString().slice(0, 10);
+}
+
+type BatchStatusFilter = 'actif' | 'all';
 
 export default function BatchesPage() {
   const { profile } = useAuth();
@@ -89,6 +98,13 @@ export default function BatchesPage() {
   const [stockAlerts, setStockAlerts] = useState<{ pot_type: PotType; current: number; threshold: number }[]>([]);
   const [showStockAlerts, setShowStockAlerts] = useState(false);
   const { fetchWithCache, isOffline } = useOfflineFetch();
+
+  // Filtres d'affichage de la liste des tournées : par défaut, seulement
+  // celles d'aujourd'hui et encore en cours (pour éviter que l'historique
+  // complet ne s'affiche et ne fasse apparaître plusieurs fois le même
+  // commercial pour chacune de ses anciennes tournées).
+  const [dateFilter, setDateFilter] = useState(todayLocalISODate());
+  const [statusFilter, setStatusFilter] = useState<BatchStatusFilter>('actif');
 
   // Le rôle 16 est l'assistant de gestion de stock : il exerce les mêmes
   // opérations quotidiennes que la gestionnaire (rôle 2).
@@ -953,6 +969,12 @@ export default function BatchesPage() {
 
   const needsPots = (bt: BatchTypeKey) => bt === 'livraison' || bt === 'mixte';
 
+  const visibleBatches = batches.filter((batch) => {
+    if (dateFilter && batch.batch_date !== dateFilter) return false;
+    if (statusFilter === 'actif' && batch.status !== 'actif') return false;
+    return true;
+  });
+
   return (
     <div className="space-y-4">
       {actionError && (
@@ -1005,6 +1027,40 @@ export default function BatchesPage() {
         </div>
       </div>
 
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-gray-400" />
+          <label className="text-sm text-gray-600">Date :</label>
+          <input
+            type="date"
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+          />
+          {dateFilter && (
+            <button
+              onClick={() => setDateFilter('')}
+              className="text-xs text-amber-600 hover:text-amber-700 font-medium"
+            >
+              Toutes les dates
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2 ml-auto">
+          {(['actif', 'all'] as BatchStatusFilter[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                statusFilter === s ? 'bg-amber-500 text-white shadow-sm' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {s === 'actif' ? 'En cours' : 'Toutes (avec clôturées)'}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {loading ? (
         loadError ? (
           <div className="text-center py-20 text-red-500 text-sm bg-red-50 rounded-lg px-4 py-3 mx-auto max-w-md">{loadError}</div>
@@ -1016,11 +1072,13 @@ export default function BatchesPage() {
           <CloudOff className="w-12 h-12 mb-3 text-gray-300" />
           <p className="text-sm">Aucune donnée hors ligne. Connectez-vous à Internet au moins une fois pour charger les tournées.</p>
         </div>
-      ) : batches.length === 0 ? (
-        <div className="text-center py-20 text-gray-400">Aucune tournée</div>
+      ) : visibleBatches.length === 0 ? (
+        <div className="text-center py-20 text-gray-400">
+          {batches.length === 0 ? 'Aucune tournée' : 'Aucune tournée ne correspond à ces filtres'}
+        </div>
       ) : (
         <div className="space-y-4">
-          {batches.map((batch) => {
+          {visibleBatches.map((batch) => {
             const expanded = selectedBatch === batch.id;
             const deposits = batch.deposits ?? [];
             const batchSPs = batch.sales_points ?? [];
