@@ -1,0 +1,8 @@
+[functions.create-user]
+verify_jwt = true
+
+[functions.kiosk-checkin]
+verify_jwt = true
+
+[functions.receive-marketing-order]
+verify_jwt = true
