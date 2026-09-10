@@ -5,15 +5,93 @@ import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { includePendingDashboardOperations } from '@/lib/pendingDashboard';
 import { getCachedPageData } from '@/lib/readCache';
 import {
-  Package, Users, Route, TrendingUp, AlertTriangle,
+  Package, Users, Route, TrendingUp, TrendingDown, Minus, AlertTriangle,
   Truck, Clock, CheckCircle2, Undo2, Store, Wallet, Filter, X,
   Archive, Disc, ChefHat, Flame, Beaker, Scale, Droplets, UserCheck, PackageX,
-  Receipt, PackagePlus, PackageMinus, CloudOff,
+  Receipt, PackagePlus, PackageMinus, CloudOff, LayoutGrid,
 } from 'lucide-react';
+import {
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts';
 import CategoryFilter, { PersonnelCategory } from '@/components/CategoryFilter';
 import PeriodFilter, { PeriodRange } from '@/components/PeriodFilter';
 
 type EntityFilter = PersonnelCategory;
+
+// Same categorical order as AnalyticsPage.tsx, kept in sync deliberately so
+// charts read as one system across pages. Validated CVD-safe on a white
+// surface (worst adjacent ΔE 8.9 protan/8.4 tritan, normal-vision floor 19.8) —
+// see the dataviz skill; the sub-3:1-contrast slots (emerald/amber/cyan/teal/
+// orange) always carry a legend/tooltip label, never color alone.
+const CHART_COLORS = {
+  blue: '#3b82f6',
+  emerald: '#10b981',
+  amber: '#f59e0b',
+  red: '#ef4444',
+  violet: '#8b5cf6',
+  cyan: '#06b6d4',
+  rose: '#f43f5e',
+  indigo: '#6366f1',
+  teal: '#14b8a6',
+  orange: '#f97316',
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  actif: CHART_COLORS.blue,
+  cloture: CHART_COLORS.emerald,
+  annule: CHART_COLORS.rose,
+};
+
+function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number; color?: string; fill?: string }[]; label?: string }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-white rounded-xl shadow-lg border border-gray-100 px-3 py-2 text-xs">
+      {label && <p className="font-semibold text-gray-900 mb-1">{label}</p>}
+      {payload.map((entry, i) => (
+        <p key={i} style={{ color: entry.color || entry.fill }} className="font-medium">
+          {entry.name} : <span className="font-bold">{entry.value > 1000 ? formatFCFA(entry.value) : entry.value}</span>
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function pctDelta(curr: number, prev: number): number {
+  if (prev === 0) return curr === 0 ? 0 : 100;
+  return ((curr - prev) / prev) * 100;
+}
+
+function TrendKpi({ label, value, delta, icon: Icon, color, onClick }: {
+  label: string; value: string; delta: number; icon: typeof TrendingUp; color: string; onClick?: () => void;
+}) {
+  const up = delta > 0.5;
+  const down = delta < -0.5;
+  const DeltaIcon = up ? TrendingUp : down ? TrendingDown : Minus;
+  return (
+    <div
+      className={`bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow${onClick ? ' cursor-pointer' : ''}`}
+      onClick={onClick}
+    >
+      <div className="flex items-start justify-between">
+        <div className="min-w-0">
+          <p className="text-sm text-gray-500">{label}</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1 truncate">{value}</p>
+        </div>
+        <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center shadow-md shrink-0`}>
+          <Icon className="w-5 h-5 text-white" />
+        </div>
+      </div>
+      <div className={`mt-3 inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2 py-0.5 ${
+        up ? 'text-emerald-700 bg-emerald-50' : down ? 'text-red-700 bg-red-50' : 'text-gray-500 bg-gray-50'
+      }`}>
+        <DeltaIcon className="w-3 h-3" />
+        {Math.abs(delta) < 0.1 ? 'stable' : `${delta > 0 ? '+' : ''}${delta.toFixed(0)}%`}
+        <span className="font-normal text-gray-400">vs période précédente</span>
+      </div>
+    </div>
+  );
+}
 
 interface RawData {
   drivers: Driver[];
@@ -41,6 +119,12 @@ function firstRelation<T>(value: T | T[] | null | undefined): T | undefined {
 
 function inRange(dateStr: string, start: string, end: string): boolean {
   return dateStr >= start && dateStr <= end;
+}
+
+function addDaysISO(dateStr: string, delta: number): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + delta);
+  return d.toISOString().slice(0, 10);
 }
 
 export default function DashboardPage({ onNavigate }: { onNavigate?: (page: string) => void }) {
@@ -341,6 +425,94 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
     const receivableOutstanding = receivableTotal - receivableCollected;
     const receivableCount = visibleReceivables.filter((r) => r.status !== 'solde').length;
 
+    // --- Power BI-style visuals: daily trend, driver breakdown, batch-status
+    // composition, and period-over-period deltas for the KPI tiles. ---
+    const periodLengthDays = Math.max(1, Math.round(
+      (new Date(`${end}T00:00:00`).getTime() - new Date(`${start}T00:00:00`).getTime()) / 86400000,
+    ) + 1);
+    const prevEnd = addDaysISO(start, -1);
+    const prevStart = addDaysISO(prevEnd, -(periodLengthDays - 1));
+
+    const prevBatches = (batchIds ? raw.batches.filter((b) => batchIds!.has(b.id)) : raw.batches)
+      .filter((b) => inRange(b.batch_date, prevStart, prevEnd));
+    const prevDeposits = visibleDepositsAll.filter((d) => inRange((d.deposited_at ?? '').slice(0, 10), prevStart, prevEnd));
+    const prevReturns = visibleReturnsAll.filter((r) => inRange((r.returned_at ?? '').slice(0, 10), prevStart, prevEnd));
+    const prevRevenue = prevDeposits.reduce((s, d) => s + (d.amount_fcfa || 0), 0);
+    const prevDepositsQty = prevDeposits.reduce((s, d) => s + d.quantity, 0);
+    const prevReturnsQty = prevReturns.reduce((s, r) => s + r.quantity, 0);
+    const prevActiveBatches = prevBatches.filter((b) => b.status === 'actif').length;
+
+    const trend = {
+      revenue: pctDelta(revenue, prevRevenue),
+      deposits: pctDelta(totalDeposits, prevDepositsQty),
+      returns: pctDelta(totalReturns, prevReturnsQty),
+      activeBatches: pctDelta(visibleBatches.filter((b) => b.status === 'actif').length, prevActiveBatches),
+    };
+
+    // Daily (or weekly, for long ranges) series for the trend chart.
+    const useWeekly = periodLengthDays > 60;
+    const bucketsMap = new Map<string, { label: string; revenue: number; deposits: number; returns: number; order: string }>();
+    const bucketKey = (day: string) => {
+      if (!useWeekly) return day;
+      const d = new Date(`${day}T00:00:00`);
+      const monday = new Date(d);
+      monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      return monday.toISOString().slice(0, 10);
+    };
+    const ensureBucket = (key: string) => {
+      let bucket = bucketsMap.get(key);
+      if (!bucket) {
+        const d = new Date(`${key}T00:00:00`);
+        bucket = {
+          label: useWeekly
+            ? `Sem. ${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}`
+            : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
+          revenue: 0, deposits: 0, returns: 0, order: key,
+        };
+        bucketsMap.set(key, bucket);
+      }
+      return bucket;
+    };
+    visibleDeposits.forEach((d) => {
+      const day = (d.deposited_at ?? '').slice(0, 10);
+      if (!day) return;
+      const bucket = ensureBucket(bucketKey(day));
+      bucket.revenue += d.amount_fcfa || 0;
+      bucket.deposits += d.quantity;
+    });
+    visibleReturns.forEach((r) => {
+      const day = (r.returned_at ?? '').slice(0, 10);
+      if (!day) return;
+      ensureBucket(bucketKey(day)).returns += r.quantity;
+    });
+    const dailySeries = [...bucketsMap.values()].sort((a, b) => a.order.localeCompare(b.order));
+
+    // Top commerciaux by pots déposés (drill-down: clicking a bar filters
+    // the whole dashboard to that commercial, same as the person selector).
+    const batchDriverMap = new Map(raw.batches.map((b) => [b.id, b.driver_id]));
+    const driverPotsMap = new Map<string, number>();
+    const driverRevenueMap = new Map<string, number>();
+    visibleDeposits.forEach((d) => {
+      const drvId = batchDriverMap.get(d.batch_id);
+      if (!drvId) return;
+      driverPotsMap.set(drvId, (driverPotsMap.get(drvId) ?? 0) + d.quantity);
+      driverRevenueMap.set(drvId, (driverRevenueMap.get(drvId) ?? 0) + (d.amount_fcfa || 0));
+    });
+    const driverBreakdown = raw.drivers
+      .map((d) => ({ id: d.id, name: d.full_name, pots: driverPotsMap.get(d.id) ?? 0, revenue: driverRevenueMap.get(d.id) ?? 0 }))
+      .filter((d) => d.pots > 0)
+      .sort((a, b) => b.pots - a.pots)
+      .slice(0, 8);
+
+    // Composition of this period's tournées by status, for the donut.
+    const statusCounts: Record<string, number> = {};
+    visibleBatches.forEach((b) => { statusCounts[b.status] = (statusCounts[b.status] ?? 0) + 1; });
+    const batchStatusBreakdown = [
+      { key: 'actif', name: 'En cours', value: statusCounts.actif ?? 0 },
+      { key: 'cloture', name: 'Clôturée', value: statusCounts.cloture ?? 0 },
+      { key: 'annule', name: 'Annulée', value: statusCounts.annule ?? 0 },
+    ].filter((s) => s.value > 0);
+
     return {
       showDriverStats,
       totalDrivers: visibleDrivers.length,
@@ -372,6 +544,10 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
       receivableCollected,
       receivableOutstanding,
       receivableCount,
+      trend,
+      dailySeries,
+      driverBreakdown,
+      batchStatusBreakdown,
       returnPotBreakdown: Array.from(returnPotBreakdown.entries()).map(([potTypeId, vals]) => ({ potTypeId, ...vals })),
       // Baker stats
       bakerPots,
@@ -538,6 +714,124 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
 
       {/* Period filter */}
       <PeriodFilter onRangeChange={setPeriodRange} defaultPreset="today" />
+
+      {/* Power BI-style overview: trend KPIs + interactive charts */}
+      {stats.showDriverStats && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+            <LayoutGrid className="w-4 h-4 text-gray-400" />
+            Vue d’ensemble — {period.label}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <TrendKpi label="Chiffre d'affaires" value={formatFCFA(stats.revenue)} delta={stats.trend.revenue} icon={TrendingUp} color="from-violet-500 to-violet-600" onClick={() => onNavigate?.('statistics')} />
+            <TrendKpi label="Pots déposés" value={String(stats.totalDeposits)} delta={stats.trend.deposits} icon={CheckCircle2} color="from-teal-500 to-teal-600" onClick={() => onNavigate?.('journal')} />
+            <TrendKpi label="Tournées actives" value={String(stats.activeBatches)} delta={stats.trend.activeBatches} icon={Route} color="from-amber-500 to-orange-600" onClick={() => onNavigate?.('batches')} />
+            <TrendKpi label="Retours / invendus" value={String(stats.totalReturns)} delta={stats.trend.returns} icon={Undo2} color="from-rose-500 to-rose-600" onClick={() => onNavigate?.('returns')} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Revenue + deposits trend */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+              <h3 className="font-semibold text-gray-900 mb-1">Chiffre d’affaires &amp; pots déposés</h3>
+              <p className="text-xs text-gray-500 mb-3">Évolution sur la période sélectionnée.</p>
+              {stats.dailySeries.length === 0 ? (
+                <div className="h-[260px] flex items-center justify-center text-sm text-gray-400">Aucune donnée sur cette période</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={260}>
+                  <AreaChart data={stats.dailySeries} margin={{ left: -12 }}>
+                    <defs>
+                      <linearGradient id="dashRevGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={CHART_COLORS.violet} stopOpacity={0.3} />
+                        <stop offset="100%" stopColor={CHART_COLORS.violet} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#6b7280' }} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Area type="monotone" dataKey="revenue" name="CA (FCFA)" stroke={CHART_COLORS.violet} fill="url(#dashRevGrad)" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            {/* Top commerciaux — click to drill down */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+              <h3 className="font-semibold text-gray-900 mb-1">Top commerciaux — pots déposés</h3>
+              <p className="text-xs text-gray-500 mb-3">Cliquez une barre pour filtrer tout le tableau de bord sur ce commercial.</p>
+              {stats.driverBreakdown.length === 0 ? (
+                <div className="h-[260px] flex items-center justify-center text-sm text-gray-400">Aucun dépôt sur cette période</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={stats.driverBreakdown} layout="vertical" margin={{ left: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                    <XAxis type="number" tick={{ fontSize: 11, fill: '#6b7280' }} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#6b7280' }} width={110} />
+                    <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
+                    <Bar
+                      dataKey="pots" name="Pots déposés" fill={CHART_COLORS.blue} radius={[0, 6, 6, 0]}
+                      cursor="pointer"
+                      onClick={(entry: any) => { setEntityFilter('commercial'); setSelectedDriver(entry.id); }}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            {/* Deposits vs returns comparison */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+              <h3 className="font-semibold text-gray-900 mb-1">Pots déposés vs retours</h3>
+              <p className="text-xs text-gray-500 mb-3">Comparaison quotidienne sur la période.</p>
+              {stats.dailySeries.length === 0 ? (
+                <div className="h-[240px] flex items-center justify-center text-sm text-gray-400">Aucune donnée sur cette période</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={stats.dailySeries}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#6b7280' }} />
+                    <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} />
+                    <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
+                    <Bar dataKey="deposits" name="Déposés" fill={CHART_COLORS.teal} radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="returns" name="Retours" fill={CHART_COLORS.rose} radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            {/* Batch status composition */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+              <h3 className="font-semibold text-gray-900 mb-1">Répartition des tournées</h3>
+              <p className="text-xs text-gray-500 mb-3">Par statut, sur la période sélectionnée.</p>
+              {stats.batchStatusBreakdown.length === 0 ? (
+                <div className="h-[240px] flex items-center justify-center text-sm text-gray-400">Aucune tournée sur cette période</div>
+              ) : (
+                <div className="flex items-center gap-4">
+                  <ResponsiveContainer width="60%" height={220}>
+                    <PieChart>
+                      <Pie data={stats.batchStatusBreakdown} dataKey="value" nameKey="name" innerRadius={55} outerRadius={85} paddingAngle={2} cursor="pointer" onClick={() => onNavigate?.('batches')}>
+                        {stats.batchStatusBreakdown.map((entry) => (
+                          <Cell key={entry.key} fill={STATUS_COLORS[entry.key] ?? CHART_COLORS.indigo} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<ChartTooltip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="flex-1 space-y-2">
+                    {stats.batchStatusBreakdown.map((entry) => (
+                      <div key={entry.key} className="flex items-center gap-2 text-sm">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLORS[entry.key] ?? CHART_COLORS.indigo }} />
+                        <span className="text-gray-600 flex-1">{entry.name}</span>
+                        <span className="font-semibold text-gray-900">{entry.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Batch traceability */}
       {stats.showDriverStats && raw && (
