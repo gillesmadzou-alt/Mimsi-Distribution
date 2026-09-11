@@ -1,3 +1,4 @@
+import Dexie, { type Table } from 'dexie';
 import { supabase } from './supabase';
 
 export interface QueueStep {
@@ -21,37 +22,19 @@ export interface QueuedJob {
   error?: string;
 }
 
-const DB_NAME = 'offline_queue_db';
-const STORE = 'jobs';
-const DB_VERSION = 1;
+// Migré vers Dexie.js (même base IndexedDB `offline_queue_db`, même store
+// `jobs` avec keyPath `id`, même version 1 — aucune tournée déjà mise en
+// file d'attente hors ligne n'est perdue lors de la mise à jour de l'app).
+class OfflineQueueDB extends Dexie {
+  jobs!: Table<QueuedJob, string>;
 
-let dbPromise: Promise<IDBDatabase> | null = null;
-
-function openDB(): Promise<IDBDatabase> {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: 'id' });
-      }
-    };
-    req.onsuccess = () => {
-      const db = req.result;
-      db.onversionchange = () => {
-        db.close();
-        dbPromise = null;
-      };
-      resolve(db);
-    };
-    req.onerror = () => {
-      dbPromise = null;
-      reject(req.error);
-    };
-  });
-  return dbPromise;
+  constructor() {
+    super('offline_queue_db');
+    this.version(1).stores({ jobs: 'id' });
+  }
 }
+
+const db = new OfflineQueueDB();
 
 function genId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -69,13 +52,7 @@ export async function enqueueJob(label: string, page: string, steps: QueueStep[]
     createdAt: new Date().toISOString(),
     status: 'pending',
   };
-  const db = await openDB();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).add(job);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  await db.jobs.add(job);
   window.dispatchEvent(new Event('offline-queue-changed'));
   registerBackgroundSync();
   return job.id;
@@ -103,16 +80,10 @@ export function registerBackgroundSync(): void {
 }
 
 export async function getPendingJobs(): Promise<QueuedJob[]> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readonly');
-    const req = tx.objectStore(STORE).getAll();
-    req.onsuccess = () => {
-      const jobs = (req.result as QueuedJob[]).filter((j) => j.status === 'pending' || j.status === 'failed');
-      resolve(jobs.sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
-    };
-    req.onerror = () => reject(req.error);
-  });
+  const jobs = await db.jobs.toArray();
+  return jobs
+    .filter((j) => j.status === 'pending' || j.status === 'failed')
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 export async function countPendingJobs(): Promise<number> {
@@ -121,23 +92,11 @@ export async function countPendingJobs(): Promise<number> {
 }
 
 export async function updateJob(job: QueuedJob): Promise<void> {
-  const db = await openDB();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put(job);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  await db.jobs.put(job);
 }
 
 export async function deleteJob(id: string): Promise<void> {
-  const db = await openDB();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).delete(id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  await db.jobs.delete(id);
   window.dispatchEvent(new Event('offline-queue-changed'));
 }
 
