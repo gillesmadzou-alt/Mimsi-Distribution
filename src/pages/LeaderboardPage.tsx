@@ -86,7 +86,7 @@ export default function LeaderboardPage({ onNavigate }: { onNavigate?: (page: st
     setLoading(false);
   }, [category, fetchWithCache]);
 
-  useEffect(() => { loadStats(); /* eslint-disable-next-line */ }, [category, periodRange, loadStats]);
+  useEffect(() => { loadStats();   }, [category, periodRange, loadStats]);
 
   useRealtimeSubscription('leaderboard-page', isOffline ? [] : ['delivery_batches', 'deposits', 'receivables', 'production_records', 'dough_deliveries'], loadStats);
 

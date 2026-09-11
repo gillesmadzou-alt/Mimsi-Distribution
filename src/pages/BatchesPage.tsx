@@ -161,10 +161,10 @@ export default function BatchesPage() {
     const batchesData = batchesRes.data ?? [];
     const batchIds = batchesData.map((b) => b.id);
 
-    let depositsMap: Record<string, Deposit[]> = {};
-    let salesPointsMap: Record<string, BatchSalesPoint[]> = {};
-    let potTypesMap: Record<string, BatchPotType[]> = {};
-    let approvalsMap: Record<string, DeliveryBatchApproval> = {};
+    const depositsMap: Record<string, Deposit[]> = {};
+    const salesPointsMap: Record<string, BatchSalesPoint[]> = {};
+    const potTypesMap: Record<string, BatchPotType[]> = {};
+    const approvalsMap: Record<string, DeliveryBatchApproval> = {};
 
     if (batchIds.length > 0) {
       const [depsRes, bspRes, bptRes, approvalsRes] = await Promise.all([
@@ -192,7 +192,7 @@ export default function BatchesPage() {
       if (detailError) throw detailError;
 
       const depositIds = (depsRes.data ?? []).map((d) => d.id);
-      let receivablesByDeposit: Record<string, Receivable> = {};
+      const receivablesByDeposit: Record<string, Receivable> = {};
       if (depositIds.length > 0) {
         const { data: recvs, error: receivablesError } = await supabase
           .from('receivables')

@@ -5,6 +5,7 @@ import { useConfirm } from '@/contexts/ConfirmContext';
 import { useToast } from '@/contexts/ToastContext';
 import { Bell, Info, AlertTriangle, AlertCircle, CheckCircle2, CheckCheck, ArrowUpCircle, ArrowDownCircle, MinusCircle, Archive } from 'lucide-react';
 import { PageId } from '@/components/AppShell';
+import { updateAppBadge } from '@/lib/badging';
 
 const TYPE_ICONS = {
   info: Info, warning: AlertTriangle, error: AlertCircle, success: CheckCircle2,
@@ -86,6 +87,10 @@ export default function NotificationBell({ onNavigate }: { onNavigate: (page: Pa
   const filtered = priorityFilter === 'all' ? sorted : sorted.filter((n) => n.priority === priorityFilter);
   const unreadCount = notifications.filter((n) => !n.is_read).length;
   const highUnread = notifications.filter((n) => !n.is_read && n.priority === 'haute').length;
+
+  useEffect(() => {
+    updateAppBadge(unreadCount);
+  }, [unreadCount]);
 
   const markRead = async (id: string) => {
     await supabase.from('app_notifications').update({ is_read: true }).eq('id', id);

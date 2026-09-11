@@ -99,7 +99,7 @@ export default function ReturnsPage({ onNavigate }: { onNavigate?: (page: string
       driverId = d?.id ?? null;
     }
 
-    let returnsQuery = supabase
+    const returnsQuery = supabase
       .from('returns')
       .select('*, sales_point:sales_points(*), batch:delivery_batches(*), return_pot_types(*), consignment:consignments(*, sales_point:sales_points(*), pot_type:pot_types(*), production_record:production_records(*, baker:bakers(*)), driver:drivers(*), batch:delivery_batches(*, driver:drivers(*))), pot_type:pot_types(*), production_record:production_records(*, baker:bakers(*)), driver:drivers(*)')
       .order('returned_at', { ascending: false });

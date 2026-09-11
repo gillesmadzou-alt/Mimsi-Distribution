@@ -72,7 +72,7 @@ export default function PeriodFilter({ onRangeChange, defaultPreset = 'week' }: 
     [preset, singleDay, monthValue, customFrom, customTo],
   );
 
-  useEffect(() => { onRangeChange(range); /* eslint-disable-next-line */ }, [range]);
+  useEffect(() => { onRangeChange(range);   }, [range]);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-3">

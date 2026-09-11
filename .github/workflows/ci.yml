@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    name: Typecheck, lint & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        # Non-bloquant pour l'instant : ~130 erreurs de lint pré-existantes
+        # (sans rapport avec les changements en cours) traînent dans le repo.
+        # On garde le rapport visible dans les logs sans faire échouer la CI
+        # pour ça — à retirer une fois ce passif nettoyé (voir
+        # docs/schema-audit.md pour le contexte des chantiers PWA en cours).
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build
+        run: npm run build
+        env:
+          # Dummy values are enough here: Vite only needs the vars to exist
+          # at build time to bake them into the bundle, the build does not
+          # actually contact Supabase.
+          VITE_SUPABASE_URL: https://placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: placeholder-anon-key

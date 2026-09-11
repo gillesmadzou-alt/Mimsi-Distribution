@@ -132,7 +132,7 @@ export async function executeStep(step: QueueStep, results: Map<string, unknown>
     }
   }
 
-  let query = supabase.from(step.table);
+  const query = supabase.from(step.table);
   let data: unknown;
   let error: unknown;
 

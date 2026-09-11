@@ -140,7 +140,7 @@ export function downloadMultiPdfReport(reports: PdfOptions[], fileName: string) 
     if (report.subtitle) doc.text(report.subtitle, 14, 27);
     doc.text(`Généré le ${formatBrazzavilleDateTime(new Date())}`, pageWidth - 14, 20, { align: 'right' });
 
-    let startY = report.subtitle ? 34 : 27;
+    const startY = report.subtitle ? 34 : 27;
 
     if (report.rows.length > 0) {
       autoTable(doc, {
