@@ -354,7 +354,7 @@ export interface ReceivablePayment {
 
 export interface AccountingEntry {
   id: string;
-  account_type: 'cash' | 'bank' | 'client';
+  account_type: 'cash' | 'bank' | 'client' | 'supplier';
   movement_type: 'income' | 'expense';
   entry_date: string;
   label: string;
@@ -363,13 +363,14 @@ export interface AccountingEntry {
   payment_method: 'especes' | 'mobile_money' | 'virement' | 'cheque' | 'carte' | 'autre';
   notes: string | null;
   client_name: string | null;
+  supplier_id: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
   source_table?: string | null;
   source_id?: string | null;
   source_event?: string | null;
-  journal_code: 'CA' | 'BQ' | 'VE' | 'OD';
+  journal_code: 'CA' | 'BQ' | 'VE' | 'AC' | 'OD';
   operation_nature: string;
   account_number: string;
   account_label: string;
@@ -377,6 +378,7 @@ export interface AccountingEntry {
   counterpart_account_number: string;
   counterpart_account_label: string;
   counterpart_account_class: number;
+  supplier?: Supplier;
 }
 
 export interface ComplianceCheck {
