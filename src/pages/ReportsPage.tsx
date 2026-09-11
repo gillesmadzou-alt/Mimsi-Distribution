@@ -10,7 +10,8 @@ import { brazzavilleToday, formatBrazzavilleDate } from '@/lib/brazzavilleTime';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
-import { downloadPdfReport, downloadExcelReport, downloadMultiPdfReport, downloadMultiExcelReport } from '@/lib/exportUtils';
+import { downloadPdfReport, downloadExcelReport, downloadMultiPdfReport, downloadMultiExcelReport, generatePdfReport, generateMultiPdfReport, appendPdfAnnexes } from '@/lib/exportUtils';
+import { fetchDocumentsForEntries, downloadDocumentBytes } from '@/lib/documents';
 import LeafletMap, { MapMarker, escapeHtml } from '@/components/LeafletMap';
 import {
   FileText, FileSpreadsheet, Loader2, Calendar, Filter,
@@ -34,6 +35,9 @@ interface ReportDef {
     columns: { header: string; key: string; align?: 'left' | 'right' | 'center' }[];
     rows: Record<string, string | number>[];
     summary?: { label: string; value: string }[];
+    /** Écritures de la Tenue de compte couvertes par ce rapport — permet de
+     * proposer les pièces justificatives liées (factures/reçus) en annexe. */
+    entryIds?: string[];
   }>;
 }
 
@@ -279,6 +283,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
       balance += income - expense;
       if (entry.entry_date < fromDate) openingBalance = balance;
       return {
+        id: entry.id,
         dateValue: entry.entry_date,
         date: fmtDate(entry.entry_date),
         label: entry.label,
@@ -332,12 +337,14 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
         { label: 'Solde de clôture', value: formatFCFA(balance) },
         { label: 'Période', value: `${fmtDate(fromDate)} — ${fmtDate(toDate)}` },
       ],
+      entryIds: rows.map((row) => row.id),
     };
   };
 
   const buildClientLedger = () => {
     const operations = accountingEntries.filter((entry) => entry.account_type === 'client').map((entry) => ({
         id: `entry:${entry.id}`,
+        entryId: entry.id,
         date: entry.entry_date,
         createdAt: entry.created_at,
         client: entry.client_name?.trim() || 'Client sans nom',
@@ -394,7 +401,24 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
         { label: 'Solde clients à la clôture', value: formatFCFA(closingBalance) },
         { label: 'Période', value: `${fmtDate(fromDate)} — ${fmtDate(toDate)}` },
       ],
+      entryIds: periodRows.map((row) => row.entryId),
     };
+  };
+
+  /** Récupère les pièces justificatives (factures/reçus/devis) liées aux
+   * écritures couvertes par un rapport, prêtes à être fondues en annexe
+   * du PDF (voir appendPdfAnnexes dans exportUtils.ts). */
+  const buildAnnexes = async (entryIds?: string[]) => {
+    const ids = [...new Set((entryIds ?? []).filter(Boolean))];
+    if (ids.length === 0) return [];
+    const docs = await fetchDocumentsForEntries(ids);
+    const results = await Promise.all(
+      docs.map(async (doc) => {
+        const bytes = await downloadDocumentBytes(doc);
+        return bytes ? { title: `${doc.title} (${doc.file_name})`, bytes } : null;
+      })
+    );
+    return results.filter((item): item is { title: string; bytes: ArrayBuffer } => item !== null);
   };
 
   // --- Report definitions ---
@@ -521,6 +545,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
             { label: 'Opérations clients sur la période', value: String(clients.rows.length) },
             { label: 'Période', value: `${fmtDate(fromDate)} — ${fmtDate(toDate)}` },
           ],
+          entryIds: [...(cash.entryIds ?? []), ...(bank.entryIds ?? []), ...(clients.entryIds ?? [])],
         };
       },
     },
@@ -1075,6 +1100,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
   // Multi-select state
   const [selectedReports, setSelectedReports] = useState<Set<string>>(new Set());
   const [exportingMulti, setExportingMulti] = useState<string | null>(null);
+  const [includeAnnexes, setIncludeAnnexes] = useState(false);
 
   const isDirector = role === 4 || role === 5 || role === 6;
 
@@ -1100,19 +1126,25 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
     if (selected.length === 0) return;
     setExportingMulti(format);
     try {
-      const built = await Promise.all(selected.map(async (r) => {
-        const data = await r.build(fromDate, toDate);
-        return {
-          title: r.title,
-          subtitle: `Période: ${fmtDate(fromDate)} — ${fmtDate(toDate)} · ${reportScopeLabel}`,
-          columns: data.columns,
-          rows: data.rows,
-          summary: data.summary,
-        };
+      const builtData = await Promise.all(selected.map((r) => r.build(fromDate, toDate)));
+      const built = builtData.map((data, i) => ({
+        title: selected[i].title,
+        subtitle: `Période: ${fmtDate(fromDate)} — ${fmtDate(toDate)} · ${reportScopeLabel}`,
+        columns: data.columns,
+        rows: data.rows,
+        summary: data.summary,
       }));
       const fileBase = `Rapports_combines_${fromDate}_${toDate}`;
       if (format === 'pdf') {
-        downloadMultiPdfReport(built, fileBase);
+        if (includeAnnexes) {
+          const allEntryIds = builtData.flatMap((data) => data.entryIds ?? []);
+          const blob = generateMultiPdfReport(built);
+          const annexes = await buildAnnexes(allEntryIds);
+          const merged = await appendPdfAnnexes(blob, annexes);
+          saveAs(merged, fileBase + '.pdf');
+        } else {
+          downloadMultiPdfReport(built, fileBase);
+        }
       } else {
         downloadMultiExcelReport(built, fileBase);
       }
@@ -1209,14 +1241,27 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
         const blob = doc.output('blob');
         saveAs(blob, fileBase + '.pdf');
       } else if (format === 'pdf') {
-        downloadPdfReport({
-          title: report.title,
-          subtitle: `Période: ${fmtDate(fromDate)} — ${fmtDate(toDate)} · ${reportScopeLabel}`,
-          columns: data.columns,
-          rows: data.rows,
-          summary: data.summary,
-          fileName: fileBase,
-        });
+        if (includeAnnexes && data.entryIds?.length) {
+          const blob = generatePdfReport({
+            title: report.title,
+            subtitle: `Période: ${fmtDate(fromDate)} — ${fmtDate(toDate)} · ${reportScopeLabel}`,
+            columns: data.columns,
+            rows: data.rows,
+            summary: data.summary,
+          });
+          const annexes = await buildAnnexes(data.entryIds);
+          const merged = await appendPdfAnnexes(blob, annexes);
+          saveAs(merged, fileBase + '.pdf');
+        } else {
+          downloadPdfReport({
+            title: report.title,
+            subtitle: `Période: ${fmtDate(fromDate)} — ${fmtDate(toDate)} · ${reportScopeLabel}`,
+            columns: data.columns,
+            rows: data.rows,
+            summary: data.summary,
+            fileName: fileBase,
+          });
+        }
       } else {
         downloadExcelReport({
           title: report.title,
@@ -1328,6 +1373,17 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
           </div>
         </div>
       </div>
+
+      {/* Annexes de pièces justificatives */}
+      <label className="flex items-center gap-2 bg-white rounded-2xl border border-gray-100 p-3 text-sm text-gray-700 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={includeAnnexes}
+          onChange={(e) => setIncludeAnnexes(e.target.checked)}
+          className="h-4 w-4 rounded border-gray-300 text-amber-500 focus:ring-amber-400"
+        />
+        Joindre en annexe les pièces justificatives (factures/reçus PDF) liées aux écritures du rapport
+      </label>
 
       {/* Attendance cross-link */}
       {onNavigate && (

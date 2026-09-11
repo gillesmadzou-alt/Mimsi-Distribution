@@ -381,6 +381,39 @@ export interface AccountingEntry {
   supplier?: Supplier;
 }
 
+export type DocumentCategory = 'facture' | 'recu' | 'devis' | 'reconnaissance_dette' | 'autre';
+
+export const DOCUMENT_CATEGORY_LABELS: Record<DocumentCategory, string> = {
+  facture: 'Facture',
+  recu: 'Reçu',
+  devis: 'Devis pro forma',
+  reconnaissance_dette: 'Reconnaissance de dette',
+  autre: 'Autre',
+};
+
+/**
+ * Pièce justificative PDF (facture, reçu, devis, reconnaissance de dette),
+ * toujours de source locale — jamais récupérée depuis un service externe.
+ * `accounting_entry_id` permet de la relier à n'importe quelle écriture de
+ * la Tenue de compte (caisse, banque, clients, fournisseurs) pour qu'elle
+ * apparaisse dans le journal correspondant et soit jointe en annexe des
+ * rapports (voir src/lib/documents.ts).
+ */
+export interface AppDocument {
+  id: string;
+  category: DocumentCategory;
+  title: string;
+  file_path: string;
+  file_name: string;
+  file_size: number | null;
+  mime_type: string;
+  accounting_entry_id: string | null;
+  notes: string | null;
+  uploaded_by: string;
+  created_at: string;
+  accounting_entry?: AccountingEntry;
+}
+
 export interface ComplianceCheck {
   id: string;
   batch_id: string;

@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { supabase, formatFCFA, EXPENSE_TYPE_LABELS, type DeliveryBatch, type DeliveryExpense, type Driver, type ExpenseType, type SalesPoint } from '@/lib/supabase';
+import { supabase, formatFCFA, EXPENSE_TYPE_LABELS, type AppDocument, type DeliveryBatch, type DeliveryExpense, type Driver, type ExpenseType, type SalesPoint } from '@/lib/supabase';
 import { downloadExcelReport, downloadPdfReport } from '@/lib/exportUtils';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { mergePendingSalesPoints } from '@/lib/offlineSalesPoints';
+import { fetchDocumentsForEntries, groupDocumentsByEntry } from '@/lib/documents';
+import DocumentAttachments from '@/components/DocumentAttachments';
 import { Receipt, Calendar, Truck, Users, ChevronDown, ChevronRight, TrendingDown, MapPin, Store, FileSpreadsheet, FileText, X, CloudOff } from 'lucide-react';
 
 type GroupBy = 'day' | 'tournee' | 'driver';
@@ -18,6 +20,8 @@ export default function ExpensesPage({ onNavigate }: { onNavigate?: (page: strin
   const [loadError, setLoadError] = useState<string | null>(null);
   const [groupBy, setGroupBy] = useState<GroupBy>('day');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [entryIdByExpense, setEntryIdByExpense] = useState<Map<string, string>>(new Map());
+  const [docsByEntry, setDocsByEntry] = useState<Map<string, AppDocument[]>>(new Map());
 
   // Filters
   const [period, setPeriod] = useState<PeriodFilter>('all');
@@ -58,11 +62,31 @@ export default function ExpensesPage({ onNavigate }: { onNavigate?: (page: strin
       setSalesPoints(await mergePendingSalesPoints(result.data.salesPoints));
       setDrivers(result.data.drivers);
       setBatches(result.data.batches);
+
+      // Pièces justificatives : chaque dépense génère automatiquement une
+      // écriture dans le journal de caisse (trigger sync_delivery_expenses_accounting,
+      // source_table='delivery_expenses', source_id=id) — on retrouve cette
+      // écriture pour savoir où rattacher les documents.
+      const expenseIds = result.data.expenses.map((e) => e.id);
+      if (expenseIds.length > 0 && !isOffline) {
+        const { data: entriesData } = await supabase
+          .from('accounting_entries')
+          .select('id, source_id')
+          .eq('source_table', 'delivery_expenses')
+          .in('source_id', expenseIds);
+        const entryMap = new Map<string, string>();
+        (entriesData ?? []).forEach((row) => {
+          if (row.source_id) entryMap.set(row.source_id, row.id);
+        });
+        setEntryIdByExpense(entryMap);
+        const docs = await fetchDocumentsForEntries([...entryMap.values()]);
+        setDocsByEntry(groupDocumentsByEntry(docs));
+      }
     } else {
       setLoadError(result.error ?? 'Erreur lors du chargement des depenses.');
     }
     setLoading(false);
-  }, [fetchWithCache]);
+  }, [fetchWithCache, isOffline]);
 
   useEffect(() => {
     loadData();
@@ -529,6 +553,13 @@ export default function ExpensesPage({ onNavigate }: { onNavigate?: (page: strin
                               {exp.reason ? ` · ${exp.reason}` : ''}
                             </p>
                           </div>
+                          <DocumentAttachments
+                            entryId={entryIdByExpense.get(exp.id) ?? null}
+                            documents={docsByEntry.get(entryIdByExpense.get(exp.id) ?? '') ?? []}
+                            onChanged={loadData}
+                            defaultCategory="recu"
+                            defaultTitle={`${EXPENSE_TYPE_LABELS[exp.expense_type]} — ${new Date(exp.expense_date).toLocaleDateString('fr-FR')}`}
+                          />
                           <span className="text-sm font-bold text-gray-900 shrink-0">{formatFCFA(exp.amount_fcfa)}</span>
                         </div>
                       ))}

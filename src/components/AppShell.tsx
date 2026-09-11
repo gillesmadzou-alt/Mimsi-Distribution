@@ -10,7 +10,7 @@ import {
   Activity, Sparkles, Megaphone,
   Bell, Map, Network, Barcode, UserCog, Menu, X, WifiOff, Wifi, CloudOff,
   ClipboardList, Receipt, UserCheck, DownloadCloud, DatabaseBackup, Loader2, CheckCircle2, PiggyBank,
-  Camera, KeyRound,
+  Camera, KeyRound, FolderOpen,
 } from 'lucide-react';
 import NotificationBell from '@/components/NotificationBell';
 import InstallBanner from '@/components/InstallBanner';
@@ -29,7 +29,7 @@ export type PageId =
   | 'consignments' | 'restock' | 'leave'
   | 'leaderboard' | 'audit' | 'production' | 'map' | 'org-chart'
   | 'barcodes' | 'users' | 'approvals' | 'scheduling' | 'ingredients' | 'reports'
-  | 'observations' | 'expenses' | 'attendance' | 'notification-archive' | 'marketing';
+  | 'observations' | 'expenses' | 'attendance' | 'notification-archive' | 'marketing' | 'documents';
 
 interface NavSection {
   label: string;
@@ -74,6 +74,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: 'contributions', label: 'Cotisations', description: 'Suivi détaillé des cotisations et de leur historique', icon: PiggyBank, minRole: 2 },
       { id: 'expenses', label: 'Dépenses livraison', description: 'Toutes les dépenses de tournée (carburant, papiers, crédits, etc.)', icon: Receipt, minRole: 1 },
       { id: 'compliance', label: 'Conformité', description: 'Contrôles qualité et écarts constatés sur le terrain', icon: ShieldCheck, minRole: 3 },
+      { id: 'documents', label: 'Pièces justificatives', description: 'Factures, reçus, devis et reconnaissances de dette (PDF), liables à la Tenue de compte', icon: FolderOpen, minRole: 3 },
     ],
   },
   {

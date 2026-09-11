@@ -122,7 +122,7 @@ export function downloadExcelReport({ title, columns, rows, summary, fileName }:
   saveAs(new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), (fileName ?? title) + '.xlsx');
 }
 
-export function downloadMultiPdfReport(reports: PdfOptions[], fileName: string) {
+export function generateMultiPdfReport(reports: PdfOptions[]): Blob {
   const doc = new jsPDF({ orientation: 'landscape' });
   const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -172,7 +172,11 @@ export function downloadMultiPdfReport(reports: PdfOptions[], fileName: string) 
     }
   });
 
-  const blob = doc.output('blob');
+  return doc.output('blob');
+}
+
+export function downloadMultiPdfReport(reports: PdfOptions[], fileName: string) {
+  const blob = generateMultiPdfReport(reports);
   saveAs(blob, fileName + '.pdf');
 }
 
@@ -202,6 +206,59 @@ export function downloadMultiExcelReport(reports: ExcelOptions[], fileName: stri
 
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   saveAs(new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), fileName + '.xlsx');
+}
+
+/**
+ * Fusionne un rapport PDF déjà généré avec des pièces justificatives PDF
+ * jointes en annexe (factures, reçus, devis, reconnaissances de dette —
+ * voir src/lib/documents.ts). Ajoute une page de garde "Annexes" listant
+ * chaque pièce avant ses pages. Une annexe qu'on n'arrive pas à lire
+ * (fichier corrompu, etc.) est ignorée plutôt que de faire échouer tout
+ * l'export — le rapport principal reste toujours généré.
+ */
+export async function appendPdfAnnexes(
+  mainBlob: Blob,
+  annexes: { title: string; bytes: ArrayBuffer }[],
+): Promise<Blob> {
+  if (annexes.length === 0) return mainBlob;
+
+  // Chargé à la demande : pdf-lib ne doit alourdir le bundle que pour les
+  // exports qui joignent réellement des annexes, pas tous les rapports.
+  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+
+  const mainBytes = await mainBlob.arrayBuffer();
+  const merged = await PDFDocument.load(mainBytes);
+
+  const usable: { title: string; doc: Awaited<ReturnType<typeof PDFDocument.load>> }[] = [];
+  for (const annex of annexes) {
+    try {
+      const doc = await PDFDocument.load(annex.bytes);
+      usable.push({ title: annex.title, doc });
+    } catch {
+      // Pièce jointe illisible comme PDF — on l'ignore silencieusement.
+    }
+  }
+  if (usable.length === 0) return mainBlob;
+
+  const font = await merged.embedFont(StandardFonts.HelveticaBold);
+  const fontRegular = await merged.embedFont(StandardFonts.Helvetica);
+  const coverPage = merged.addPage();
+  const { width, height } = coverPage.getSize();
+  coverPage.drawText('ANNEXES', { x: 40, y: height - 60, size: 22, font, color: rgb(0.2, 0.25, 0.32) });
+  coverPage.drawText('Pièces justificatives jointes à ce rapport :', { x: 40, y: height - 90, size: 11, font: fontRegular, color: rgb(0.4, 0.4, 0.4) });
+  usable.forEach((annex, index) => {
+    const y = height - 120 - index * 20;
+    if (y < 40) return;
+    coverPage.drawText(`${index + 1}. ${annex.title}`, { x: 40, y, size: 10, font: fontRegular, color: rgb(0.1, 0.1, 0.1) });
+  });
+
+  for (const annex of usable) {
+    const pages = await merged.copyPages(annex.doc, annex.doc.getPageIndices());
+    pages.forEach((page) => merged.addPage(page));
+  }
+
+  const mergedBytes = await merged.save();
+  return new Blob([mergedBytes as unknown as ArrayBuffer], { type: 'application/pdf' });
 }
 
 export { formatFCFA };

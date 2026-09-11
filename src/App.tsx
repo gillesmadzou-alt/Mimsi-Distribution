@@ -44,6 +44,7 @@ const NotificationArchivePage = lazy(() => import('@/pages/NotificationArchivePa
 const AnalyticsPage = lazy(() => import('@/pages/AnalyticsPage'));
 const OpportunisticSalesPage = lazy(() => import('@/pages/OpportunisticSalesPage'));
 const MarketingPage = lazy(() => import('@/pages/MarketingPage'));
+const DocumentsPage = lazy(() => import('@/pages/DocumentsPage'));
 const KioskCheckIn = lazy(() => import('@/pages/KioskCheckIn'));
 
 function PageLoader() {
@@ -134,6 +135,7 @@ function OfficeApp() {
     analytics: <AnalyticsPage onNavigate={navFromPage} />,
     opportunistic: <OpportunisticSalesPage />,
     marketing: <MarketingPage />,
+    documents: <DocumentsPage onNavigate={navFromPage} />,
   };
 
   const role = (profile?.role ?? 1) as UserRole;
