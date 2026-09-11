@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
-import { getPendingJobs, processAllPending, countPendingJobs, QueuedJob } from '@/lib/offlineQueue';
+import { getPendingJobs, processAllPending, countPendingJobs, registerBackgroundSync, QueuedJob } from '@/lib/offlineQueue';
 import { useAuth } from '@/contexts/AuthContext';
 
 type SyncStatus = 'online' | 'offline' | 'syncing' | 'error';
@@ -58,10 +58,24 @@ export function SyncProvider({ children }: { children: ReactNode }) {
         const count = await countPendingJobs();
         if (count > 0) {
           syncNow();
+          registerBackgroundSync();
         }
       }
     })();
   }, [refreshPending, syncNow]);
+
+  // Background Sync API : le service worker réveille cet onglet (ou n'importe
+  // quel autre onglet ouvert) dès que la connexion revient, sans attendre le
+  // prochain tick du polling de 15s ci-dessous — utile quand l'onglet est en
+  // arrière-plan et que le navigateur ralentit ses propres timers.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === 'BACKGROUND_SYNC_TRIGGER') syncNow();
+    };
+    navigator.serviceWorker.addEventListener('message', handler);
+    return () => navigator.serviceWorker.removeEventListener('message', handler);
+  }, [syncNow]);
 
   useEffect(() => {
     setIsOnline(navigator.onLine && !manualOffline);

@@ -79,6 +79,19 @@ function OfficeApp() {
   }, []);
   const navFromPage = useCallback((p: string) => nav(p as PageId), [nav]);
 
+  // Clic sur une notification système Web Push (voir public/sw.js) : le
+  // service worker relaie la page cible à l'onglet qu'il vient de focus.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === 'PUSH_NOTIFICATION_CLICK' && event.data.linkPage) {
+        navFromPage(event.data.linkPage);
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handler);
+    return () => navigator.serviceWorker.removeEventListener('message', handler);
+  }, [navFromPage]);
+
   const goBack = useCallback(() => {
     setHistory((h) => {
       if (h.length === 0) return h;

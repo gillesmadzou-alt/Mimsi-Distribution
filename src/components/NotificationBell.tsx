@@ -3,9 +3,10 @@ import { supabase, AppNotification } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useToast } from '@/contexts/ToastContext';
-import { Bell, Info, AlertTriangle, AlertCircle, CheckCircle2, CheckCheck, ArrowUpCircle, ArrowDownCircle, MinusCircle, Archive } from 'lucide-react';
+import { Bell, BellRing, BellOff, Info, AlertTriangle, AlertCircle, CheckCircle2, CheckCheck, ArrowUpCircle, ArrowDownCircle, MinusCircle, Archive } from 'lucide-react';
 import { PageId } from '@/components/AppShell';
 import { updateAppBadge } from '@/lib/badging';
+import { isPushSupported, getPushSubscriptionState, subscribeToPush, unsubscribeFromPush } from '@/lib/webPush';
 
 const TYPE_ICONS = {
   info: Info, warning: AlertTriangle, error: AlertCircle, success: CheckCircle2,
@@ -44,7 +45,35 @@ export default function NotificationBell({ onNavigate }: { onNavigate: (page: Pa
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
   const [archivingAll, setArchivingAll] = useState(false);
   const [markingAllRead, setMarkingAllRead] = useState(false);
+  const [pushState, setPushState] = useState<'subscribed' | 'unsubscribed' | 'unsupported'>('unsupported');
+  const [pushBusy, setPushBusy] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isPushSupported()) return;
+    getPushSubscriptionState().then(setPushState);
+  }, []);
+
+  const togglePush = async () => {
+    if (!profile || pushBusy) return;
+    setPushBusy(true);
+    if (pushState === 'subscribed') {
+      const { error } = await unsubscribeFromPush();
+      if (error) toast(error, 'error');
+      else {
+        setPushState('unsubscribed');
+        toast('Notifications push désactivées.', 'success');
+      }
+    } else {
+      const { error } = await subscribeToPush(profile.id);
+      if (error) toast(error, 'error');
+      else {
+        setPushState('subscribed');
+        toast('Notifications push activées.', 'success');
+      }
+    }
+    setPushBusy(false);
+  };
 
   const loadNotifications = useCallback(async () => {
     if (!profile) return;
@@ -188,6 +217,23 @@ export default function NotificationBell({ onNavigate }: { onNavigate: (page: Pa
                 Voir les archives
               </button>
             </div>
+            {pushState !== 'unsupported' && (
+              <button
+                type="button"
+                onClick={togglePush}
+                disabled={pushBusy}
+                className={`inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  pushState === 'subscribed' ? 'bg-blue-50 text-blue-700 hover:bg-blue-100' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {pushState === 'subscribed' ? <BellRing className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+                {pushBusy
+                  ? 'Traitement…'
+                  : pushState === 'subscribed'
+                    ? 'Notifications push activées — désactiver'
+                    : 'Activer les notifications push (app fermée)'}
+              </button>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"

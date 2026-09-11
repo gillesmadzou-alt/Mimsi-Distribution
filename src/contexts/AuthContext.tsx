@@ -3,6 +3,7 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase, Profile, ROLE_LABELS, UserRole } from '@/lib/supabase';
 import { clearPageCache, getAllCachedData } from '@/lib/readCache';
 import { precacheAllData, isPrecacheDone } from '@/lib/precache';
+import { setSentryUser } from '@/lib/sentry';
 
 interface AuthContextType {
   user: User | null;
@@ -176,6 +177,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+
+  // Un seul point d'entrée réactif plutôt que d'ajouter l'appel à chacun des
+  // nombreux setProfile(...) ci-dessous — seul l'id et le rôle sont envoyés
+  // à Sentry, jamais le nom complet ni le téléphone du personnel.
+  useEffect(() => {
+    setSentryUser(profile?.id ?? null, profile?.role);
+  }, [profile]);
   const [loading, setLoading] = useState(true);
   const [kioskMode, setKioskMode] = useState(false);
   const [offlineMode, setOfflineMode] = useState(false);

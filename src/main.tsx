@@ -2,10 +2,32 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { initSentry, SentryErrorBoundary } from './lib/sentry';
+
+initSentry();
+
+function CrashFallback() {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-gray-50 p-6 text-center">
+      <p className="text-lg font-semibold text-gray-900">Une erreur inattendue est survenue.</p>
+      <p className="max-w-sm text-sm text-gray-500">
+        L'incident a été signalé automatiquement. Rechargez la page pour continuer.
+      </p>
+      <button
+        onClick={() => window.location.reload()}
+        className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600"
+      >
+        Recharger
+      </button>
+    </div>
+  );
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <SentryErrorBoundary fallback={<CrashFallback />}>
+      <App />
+    </SentryErrorBoundary>
   </StrictMode>
 );
 

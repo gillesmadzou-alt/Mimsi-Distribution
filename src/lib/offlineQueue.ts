@@ -77,7 +77,29 @@ export async function enqueueJob(label: string, page: string, steps: QueueStep[]
     tx.onerror = () => reject(tx.error);
   });
   window.dispatchEvent(new Event('offline-queue-changed'));
+  registerBackgroundSync();
   return job.id;
+}
+
+/**
+ * Demande au navigateur de réveiller le service worker (événement `sync`,
+ * voir public/sw.js) dès que la connexion revient, même si cet onglet est en
+ * arrière-plan. Complète le polling de SyncContext plutôt que le remplacer :
+ * ne fait rien silencieusement sur les navigateurs sans Background Sync API
+ * (Safari, Firefox) — le polling reste alors le seul mécanisme, comme avant.
+ */
+export function registerBackgroundSync(): void {
+  if (!('serviceWorker' in navigator) || !('SyncManager' in window)) return;
+  navigator.serviceWorker.ready
+    .then((registration) => {
+      const syncRegistration = registration as ServiceWorkerRegistration & {
+        sync?: { register: (tag: string) => Promise<void> };
+      };
+      return syncRegistration.sync?.register('sync-offline-queue');
+    })
+    .catch(() => {
+      // Background Sync non disponible ou refusé — le polling prend le relais.
+    });
 }
 
 export async function getPendingJobs(): Promise<QueuedJob[]> {
