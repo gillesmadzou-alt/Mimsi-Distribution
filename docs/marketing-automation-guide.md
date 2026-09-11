@@ -14,7 +14,7 @@ FB / WhatsApp   ───►  envoie un      ───► normalise et    ──
 
 Ce qui est **déjà prêt dans le code de l'app** (rien à développer) :
 
-- La table `marketing_orders` ([supabase/migrations/20260910120000_add_marketing_orders.sql](../supabase/migrations/20260910120000_add_marketing_orders.sql))
+- La table `marketing_orders` ([supabase/migrations/20260910160509_add_marketing_orders.sql](../supabase/migrations/20260910160509_add_marketing_orders.sql))
 - La fonction qui reçoit les commandes normalisées depuis n8n : `receive-marketing-order` ([supabase/functions/receive-marketing-order/index.ts](../supabase/functions/receive-marketing-order/index.ts))
 - La page **Marketing** dans l'app (stratégie, liste des commandes, statut)
 - Un modèle de workflow n8n prêt à importer : [n8n/mimsi-marketing-orders-workflow.json](n8n/mimsi-marketing-orders-workflow.json)
@@ -32,7 +32,7 @@ supabase secrets set MARKETING_WEBHOOK_SECRET=<valeur-longue-aleatoire-a-toi-de-
 ```
 
 Sinon, ouvre le projet dans **Bolt.new** (`sb1-gwcarmm4`) et demande à l'agent
-Bolt d'appliquer la migration `20260910120000_add_marketing_orders.sql` et de
+Bolt d'appliquer la migration `20260910160509_add_marketing_orders.sql` et de
 déployer la fonction `receive-marketing-order` — Bolt gère ça directement.
 
 Génère un secret aléatoire pour `MARKETING_WEBHOOK_SECRET`, par exemple avec :
