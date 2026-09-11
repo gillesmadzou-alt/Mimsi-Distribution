@@ -5,7 +5,7 @@
 BEGIN;
 
 -- profiles (13 rows)
-INSERT INTO public.profiles (id, full_name, role, phone, avatar_url, is_active, created_at, updated_at) Page_DownPage_DownPage_DownPage_DownPage_DownPage_DownVALUES
+INSERT INTO public.profiles (id, full_name, role, phone, avatar_url, is_active, created_at, updated_at) VALUES
   ('e0997ca3-5e7a-42ca-88db-ad64166bf19e', 'Admin ', 6, NULL, NULL, true, '2026-07-25T22:20:57.266711+00:00', '2026-07-25T22:20:57.266711+00:00'),
   ('8bcc7375-2780-480b-ac36-c050753f8fc5', 'MALONGA Adelphe', 4, NULL, NULL, true, '2026-07-27T20:47:32.123637+00:00', '2026-07-27T20:47:32.123637+00:00'),
   ('1555fa97-1a9c-43cb-ac35-e9600848bb31', 'PAMBOU Estelle', 5, NULL, NULL, true, '2026-07-27T20:47:32.123637+00:00', '2026-08-04T15:10:10.935965+00:00'),
