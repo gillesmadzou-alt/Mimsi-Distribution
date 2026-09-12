@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { sendChannelMessage } from "../_shared/messaging.ts";
 
 // Remplace le webhook n8n : reçoit DIRECTEMENT les évènements Meta (WhatsApp
 // Business, Messenger, Instagram, commentaires sur la Page) et les
@@ -170,6 +171,36 @@ function normalizeCommentEntries(body: Record<string, unknown>): NormalizedComme
   return results;
 }
 
+// Envoie le message de bienvenue configuré pour ce canal (auto_reply_settings),
+// mais seulement si c'est la toute première fois qu'on entend parler de ce
+// client sur ce canal — évite de spammer une conversation déjà en cours.
+async function maybeSendAutoReply(
+  serviceClient: ReturnType<typeof createClient>,
+  channel: "whatsapp" | "facebook" | "instagram",
+  customerPhone: string,
+) {
+  try {
+    const { count } = await serviceClient
+      .from("marketing_orders")
+      .select("id", { count: "exact", head: true })
+      .eq("channel", channel)
+      .eq("customer_phone", customerPhone);
+    if ((count ?? 0) > 1) return; // déjà un historique avec ce client sur ce canal
+
+    const { data: settings } = await serviceClient
+      .from("auto_reply_settings")
+      .select("enabled, message")
+      .eq("channel", channel)
+      .maybeSingle();
+    if (!settings?.enabled || !settings.message) return;
+
+    const result = await sendChannelMessage(channel, customerPhone, settings.message);
+    if (!result.ok) console.error(`meta-webhook auto-reply (${channel}) error:`, result.error);
+  } catch (err) {
+    console.error("meta-webhook auto-reply unexpected error:", err);
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders() });
@@ -223,7 +254,7 @@ Deno.serve(async (req: Request) => {
 
   let inserted = 0;
   for (const msg of normalized) {
-    const { error } = await serviceClient
+    const { data: insertedRow, error } = await serviceClient
       .from("marketing_orders")
       .upsert(
         {
@@ -236,12 +267,20 @@ Deno.serve(async (req: Request) => {
           status: "nouveau",
         },
         msg.externalId ? { onConflict: "channel,external_id", ignoreDuplicates: true } : undefined,
-      );
+      )
+      .select("id")
+      .maybeSingle();
     if (error) {
       console.error("meta-webhook insert error:", error.message);
       continue;
     }
     inserted++;
+
+    // Bot de réponse automatique : envoyé une seule fois, au tout premier
+    // message d'un client sur ce canal (pas à chaque message).
+    if (insertedRow && msg.customerPhone) {
+      await maybeSendAutoReply(serviceClient, msg.channel, msg.customerPhone);
+    }
   }
 
   for (const c of normalizedComments) {

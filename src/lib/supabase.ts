@@ -1251,6 +1251,31 @@ export interface FacebookPost {
   published_at: string | null;
 }
 
+export type AutoReplyChannel = 'whatsapp' | 'facebook' | 'instagram';
+
+export interface AutoReplySetting {
+  channel: AutoReplyChannel;
+  enabled: boolean;
+  message: string;
+  updated_at: string;
+}
+
+export type BroadcastStatus = 'en_cours' | 'termine' | 'echec';
+export type BroadcastChannelFilter = 'all' | 'whatsapp' | 'facebook' | 'instagram';
+
+export interface Broadcast {
+  id: string;
+  message: string;
+  channel: BroadcastChannelFilter;
+  status: BroadcastStatus;
+  recipients_total: number;
+  recipients_sent: number;
+  recipients_failed: number;
+  created_by: string;
+  created_at: string;
+  finished_at: string | null;
+}
+
 export type FacebookCommentStatus = 'nouveau' | 'traite' | 'masque' | 'supprime';
 
 export interface FacebookComment {

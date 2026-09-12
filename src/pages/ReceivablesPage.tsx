@@ -9,7 +9,7 @@ import { useOfflineSave, buildSteps } from '@/lib/useOfflineSave';
 import { useSync } from '@/contexts/SyncContext';
 import {
   Wallet, X, Clock, CheckCircle2, AlertCircle, Phone,
-  FileSpreadsheet, FileText, History, CloudOff,
+  FileSpreadsheet, FileText, History, CloudOff, MessageCircle, Loader2,
 } from 'lucide-react';
 import { downloadExcelReport, downloadPdfReport } from '@/lib/exportUtils';
 
@@ -201,6 +201,25 @@ export default function ReceivablesPage({ onNavigate }: { onNavigate?: (page: st
   const { save } = useOfflineSave();
   const { syncNow } = useSync();
 
+  const [sendingReminders, setSendingReminders] = useState(false);
+  const canSendReminders = (profile?.role ?? 0) >= 5;
+
+  const sendPaymentReminders = async () => {
+    if (!window.confirm('Envoyer un rappel WhatsApp à tous les points de vente ayant une créance en attente ou partielle ?')) return;
+    setSendingReminders(true);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const { data, error } = await supabase.functions.invoke('send-payment-reminders', {
+      headers: sessionData.session ? { Authorization: `Bearer ${sessionData.session.access_token}` } : undefined,
+    });
+    setSendingReminders(false);
+    if (error || (data as { error?: string } | null)?.error) {
+      toast((data as { error?: string } | null)?.error ?? "Échec de l'envoi des relances.", 'error');
+      return;
+    }
+    const result = data as { sales_points_relances: number; sent: number; failed: number };
+    toast(`Relances envoyées : ${result.sent}/${result.sales_points_relances} points de vente.`, result.failed > 0 ? 'error' : 'success');
+  };
+
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedReceivable) return;
@@ -296,6 +315,13 @@ export default function ReceivablesPage({ onNavigate }: { onNavigate?: (page: st
             {salesPoints.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
           <div className="ml-auto flex gap-2">
+            {canSendReminders && (
+              <button onClick={sendPaymentReminders} disabled={sendingReminders}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 transition-all disabled:opacity-50">
+                {sendingReminders ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
+                Relancer les impayés
+              </button>
+            )}
             <button onClick={handleExportExcel}
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition-all">
               <FileSpreadsheet className="w-4 h-4" />

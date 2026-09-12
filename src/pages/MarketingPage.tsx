@@ -3,7 +3,8 @@ import {
   supabase, MarketingOrder, MarketingChannel, MarketingOrderStatus,
   MARKETING_CHANNEL_LABELS, MARKETING_CHANNEL_META,
   MARKETING_ORDER_STATUS_LABELS, MARKETING_ORDER_STATUS_META,
-  FacebookPost, FacebookComment,
+  FacebookPost, FacebookComment, AutoReplySetting, AutoReplyChannel,
+  Broadcast, BroadcastChannelFilter,
 } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
@@ -12,9 +13,18 @@ import {
   Facebook, Instagram, MessageCircle, Music2, Inbox, Zap, Plus, X,
   Target, Calendar, Users, Lightbulb, Copy, CheckCircle2, ExternalLink,
   Send, Link2, AlertTriangle, Loader2, MessageSquare, EyeOff, Trash2, UserX, Reply,
+  Bot, Radio, Save,
 } from 'lucide-react';
 
 type Tab = 'strategie' | 'commandes' | 'commentaires' | 'publier' | 'automatisation';
+
+const AUTO_REPLY_CHANNELS: AutoReplyChannel[] = ['whatsapp', 'facebook', 'instagram'];
+const BROADCAST_CHANNEL_LABELS: Record<BroadcastChannelFilter, string> = {
+  all: 'Tous les canaux',
+  whatsapp: 'WhatsApp',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+};
 
 const FB_COMMENT_STATUS_LABELS: Record<FacebookComment['status'], string> = {
   nouveau: 'Nouveau',
@@ -131,6 +141,17 @@ export default function MarketingPage() {
   const [orderReplyBusy, setOrderReplyBusy] = useState<string | null>(null);
   const [openReplyFor, setOpenReplyFor] = useState<string | null>(null);
 
+  const [autoReplySettings, setAutoReplySettings] = useState<AutoReplySetting[]>([]);
+  const [autoReplyLoading, setAutoReplyLoading] = useState(true);
+  const [autoReplyDrafts, setAutoReplyDrafts] = useState<Record<string, string>>({});
+  const [autoReplySaving, setAutoReplySaving] = useState<string | null>(null);
+
+  const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
+  const [broadcastsLoading, setBroadcastsLoading] = useState(true);
+  const [broadcastMessage, setBroadcastMessage] = useState('');
+  const [broadcastChannel, setBroadcastChannel] = useState<BroadcastChannelFilter>('all');
+  const [broadcastSending, setBroadcastSending] = useState(false);
+
   const [form, setForm] = useState({
     channel: 'whatsapp' as MarketingChannel,
     customer_name: '',
@@ -236,6 +257,88 @@ export default function MarketingPage() {
     setOrderReplyDrafts((prev) => ({ ...prev, [order.id]: '' }));
     setOpenReplyFor(null);
     loadOrders();
+  };
+
+  const loadAutoReplySettings = useCallback(async () => {
+    setAutoReplyLoading(true);
+    const { data, error } = await supabase.from('auto_reply_settings').select('*');
+    if (!error && data) {
+      const rows = data as AutoReplySetting[];
+      setAutoReplySettings(rows);
+      setAutoReplyDrafts((prev) => {
+        const next = { ...prev };
+        for (const r of rows) if (next[r.channel] === undefined) next[r.channel] = r.message;
+        return next;
+      });
+    }
+    setAutoReplyLoading(false);
+  }, []);
+
+  useEffect(() => { loadAutoReplySettings(); }, [loadAutoReplySettings]);
+  useRealtimeSubscription('marketing-page-auto-reply', isOffline ? [] : ['auto_reply_settings'], loadAutoReplySettings);
+
+  const toggleAutoReply = async (channel: AutoReplyChannel, enabled: boolean) => {
+    setAutoReplySettings((prev) => prev.map((s) => (s.channel === channel ? { ...s, enabled } : s)));
+    const { error } = await supabase.from('auto_reply_settings').update({ enabled }).eq('channel', channel);
+    if (error) {
+      toast('Impossible de mettre à jour le bot.', 'error');
+      loadAutoReplySettings();
+    }
+  };
+
+  const saveAutoReplyMessage = async (channel: AutoReplyChannel) => {
+    const message = (autoReplyDrafts[channel] ?? '').trim();
+    if (!message) {
+      toast('Le message ne peut pas être vide.', 'error');
+      return;
+    }
+    setAutoReplySaving(channel);
+    const { error } = await supabase.from('auto_reply_settings').update({ message }).eq('channel', channel);
+    setAutoReplySaving(null);
+    if (error) {
+      toast('Impossible d\'enregistrer le message.', 'error');
+      return;
+    }
+    toast('Message du bot enregistré.', 'success');
+  };
+
+  const loadBroadcasts = useCallback(async () => {
+    setBroadcastsLoading(true);
+    const { data, error } = await supabase
+      .from('broadcasts')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if (!error) setBroadcasts((data as Broadcast[]) ?? []);
+    setBroadcastsLoading(false);
+  }, []);
+
+  useEffect(() => { loadBroadcasts(); }, [loadBroadcasts]);
+  useRealtimeSubscription('marketing-page-broadcasts', isOffline ? [] : ['broadcasts'], loadBroadcasts);
+
+  const sendBroadcast = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!broadcastMessage.trim()) {
+      toast('Le message est obligatoire.', 'error');
+      return;
+    }
+    if (!window.confirm('Envoyer ce message à tous les clients connus concernés ? Cette action est irréversible.')) return;
+    setBroadcastSending(true);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const { data, error } = await supabase.functions.invoke('broadcast-message', {
+      body: { message: broadcastMessage.trim(), channel: broadcastChannel },
+      headers: sessionData.session ? { Authorization: `Bearer ${sessionData.session.access_token}` } : undefined,
+    });
+    setBroadcastSending(false);
+    if (error || (data as { error?: string } | null)?.error) {
+      toast((data as { error?: string } | null)?.error ?? "Échec de la diffusion.", 'error');
+      loadBroadcasts();
+      return;
+    }
+    const result = data as { sent: number; failed: number; total: number };
+    toast(`Diffusion envoyée : ${result.sent}/${result.total} réussis.`, result.failed > 0 ? 'error' : 'success');
+    setBroadcastMessage('');
+    loadBroadcasts();
   };
 
   const publishToFacebook = async (event: React.FormEvent) => {
@@ -657,6 +760,109 @@ export default function MarketingPage() {
 
       {tab === 'automatisation' && (
         <div className="space-y-4">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+            <h3 className="font-bold text-gray-900 flex items-center gap-2"><Bot className="w-5 h-5 text-violet-600" /> Bot de réponse automatique</h3>
+            <p className="text-sm text-gray-600">
+              Envoie automatiquement un message de bienvenue au tout premier contact d'un client sur chaque canal (une seule fois, pas à chaque message).
+            </p>
+            {autoReplyLoading ? (
+              <div className="text-center py-6 text-gray-400 text-sm">Chargement…</div>
+            ) : (
+              <div className="space-y-3">
+                {AUTO_REPLY_CHANNELS.map((channel) => {
+                  const setting = autoReplySettings.find((s) => s.channel === channel);
+                  const meta = MARKETING_CHANNEL_META[channel];
+                  return (
+                    <div key={channel} className="border border-gray-100 rounded-xl p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${meta.bgColor} ${meta.color}`}>
+                          {MARKETING_CHANNEL_LABELS[channel]}
+                        </span>
+                        <button
+                          onClick={() => toggleAutoReply(channel, !(setting?.enabled))}
+                          className={`relative w-10 h-5.5 rounded-full transition-colors ${setting?.enabled ? 'bg-emerald-500' : 'bg-gray-200'}`}
+                          style={{ height: '22px' }}
+                        >
+                          <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${setting?.enabled ? 'translate-x-4' : ''}`} />
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={autoReplyDrafts[channel] ?? ''}
+                          onChange={(e) => setAutoReplyDrafts((prev) => ({ ...prev, [channel]: e.target.value }))}
+                          className="flex-1 rounded-lg border border-gray-200 px-3 py-1.5 text-sm outline-none focus:border-violet-500"
+                        />
+                        <button
+                          onClick={() => saveAutoReplyMessage(channel)}
+                          disabled={autoReplySaving === channel}
+                          className="shrink-0 p-1.5 rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-100 transition-colors disabled:opacity-50"
+                          title="Enregistrer"
+                        >
+                          {autoReplySaving === channel ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {autoReplySettings.some((s) => s.channel === 'whatsapp' && s.enabled) && (
+              <p className="text-xs text-amber-600">Pour WhatsApp, l'envoi nécessite un numéro de production configuré (secrets WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID) — pas encore actif avec le numéro de test.</p>
+            )}
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+            <h3 className="font-bold text-gray-900 flex items-center gap-2"><Radio className="w-5 h-5 text-orange-600" /> Diffusion groupée</h3>
+            <p className="text-sm text-gray-600">
+              Envoie un même message à tous les clients qui nous ont déjà contactés (WhatsApp, Facebook, Instagram), en une seule fois.
+            </p>
+            <form onSubmit={sendBroadcast} className="space-y-3">
+              <textarea
+                value={broadcastMessage}
+                onChange={(e) => setBroadcastMessage(e.target.value)}
+                placeholder="Ex : Promo du jour : -10% sur les madeleines aujourd'hui uniquement !"
+                rows={3}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-orange-500"
+              />
+              <div className="flex items-center gap-3">
+                <select
+                  value={broadcastChannel}
+                  onChange={(e) => setBroadcastChannel(e.target.value as BroadcastChannelFilter)}
+                  className="rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-orange-500"
+                >
+                  {(Object.keys(BROADCAST_CHANNEL_LABELS) as BroadcastChannelFilter[]).map((c) => (
+                    <option key={c} value={c}>{BROADCAST_CHANNEL_LABELS[c]}</option>
+                  ))}
+                </select>
+                <button
+                  type="submit"
+                  disabled={broadcastSending}
+                  className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 text-white text-sm font-medium shadow-sm hover:shadow-md transition-all disabled:opacity-50"
+                >
+                  {broadcastSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radio className="w-4 h-4" />}
+                  {broadcastSending ? 'Envoi en cours…' : 'Diffuser'}
+                </button>
+              </div>
+            </form>
+            {!broadcastsLoading && broadcasts.length > 0 && (
+              <div className="border-t border-gray-100 pt-3 space-y-2">
+                {broadcasts.slice(0, 5).map((b) => (
+                  <div key={b.id} className="flex items-center justify-between text-sm">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-gray-800 truncate">{b.message}</p>
+                      <p className="text-xs text-gray-400">{BROADCAST_CHANNEL_LABELS[b.channel]} · {new Date(b.created_at).toLocaleString('fr-FR')}</p>
+                    </div>
+                    <span className={`shrink-0 ml-3 text-xs px-2 py-0.5 rounded-full font-medium ${
+                      b.status === 'termine' ? 'bg-emerald-50 text-emerald-700' : b.status === 'echec' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
+                    }`}>
+                      {b.recipients_sent}/{b.recipients_total} envoyés
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-3">
             <h3 className="font-bold text-gray-900 flex items-center gap-2"><Zap className="w-5 h-5 text-amber-500" /> Comment ça marche</h3>
             <p className="text-sm text-gray-600">
