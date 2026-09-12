@@ -1250,3 +1250,20 @@ export interface FacebookPost {
   created_at: string;
   published_at: string | null;
 }
+
+export type FacebookCommentStatus = 'nouveau' | 'traite' | 'masque' | 'supprime';
+
+export interface FacebookComment {
+  id: string;
+  post_id: string | null;
+  comment_id: string;
+  parent_comment_id: string | null;
+  from_id: string | null;
+  from_name: string | null;
+  message: string | null;
+  status: FacebookCommentStatus;
+  raw_payload: Record<string, unknown> | null;
+  created_time: string | null;
+  created_at: string;
+  updated_at: string;
+}

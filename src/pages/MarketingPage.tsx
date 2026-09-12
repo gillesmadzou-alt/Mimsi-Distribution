@@ -3,7 +3,7 @@ import {
   supabase, MarketingOrder, MarketingChannel, MarketingOrderStatus,
   MARKETING_CHANNEL_LABELS, MARKETING_CHANNEL_META,
   MARKETING_ORDER_STATUS_LABELS, MARKETING_ORDER_STATUS_META,
-  FacebookPost,
+  FacebookPost, FacebookComment,
 } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
@@ -11,10 +11,24 @@ import { useToast } from '@/contexts/ToastContext';
 import {
   Facebook, Instagram, MessageCircle, Music2, Inbox, Zap, Plus, X,
   Target, Calendar, Users, Lightbulb, Copy, CheckCircle2, ExternalLink,
-  Send, Link2, AlertTriangle, Loader2,
+  Send, Link2, AlertTriangle, Loader2, MessageSquare, EyeOff, Trash2, UserX, Reply,
 } from 'lucide-react';
 
-type Tab = 'strategie' | 'commandes' | 'publier' | 'automatisation';
+type Tab = 'strategie' | 'commandes' | 'commentaires' | 'publier' | 'automatisation';
+
+const FB_COMMENT_STATUS_LABELS: Record<FacebookComment['status'], string> = {
+  nouveau: 'Nouveau',
+  traite: 'Répondu',
+  masque: 'Masqué',
+  supprime: 'Supprimé',
+};
+
+const FB_COMMENT_STATUS_META: Record<FacebookComment['status'], { color: string; bgColor: string }> = {
+  nouveau: { color: 'text-amber-700', bgColor: 'bg-amber-50' },
+  traite: { color: 'text-emerald-700', bgColor: 'bg-emerald-50' },
+  masque: { color: 'text-gray-600', bgColor: 'bg-gray-100' },
+  supprime: { color: 'text-red-700', bgColor: 'bg-red-50' },
+};
 
 interface ChannelStrategy {
   channel: MarketingChannel;
@@ -108,6 +122,15 @@ export default function MarketingPage() {
   const [fbLink, setFbLink] = useState('');
   const [publishing, setPublishing] = useState(false);
 
+  const [fbComments, setFbComments] = useState<FacebookComment[]>([]);
+  const [fbCommentsLoading, setFbCommentsLoading] = useState(true);
+  const [commentReplyDrafts, setCommentReplyDrafts] = useState<Record<string, string>>({});
+  const [commentActionBusy, setCommentActionBusy] = useState<string | null>(null);
+
+  const [orderReplyDrafts, setOrderReplyDrafts] = useState<Record<string, string>>({});
+  const [orderReplyBusy, setOrderReplyBusy] = useState<string | null>(null);
+  const [openReplyFor, setOpenReplyFor] = useState<string | null>(null);
+
   const [form, setForm] = useState({
     channel: 'whatsapp' as MarketingChannel,
     customer_name: '',
@@ -146,6 +169,74 @@ export default function MarketingPage() {
 
   useEffect(() => { loadFbPosts(); }, [loadFbPosts]);
   useRealtimeSubscription('marketing-page-fb', isOffline ? [] : ['facebook_posts'], loadFbPosts);
+
+  const loadFbComments = useCallback(async () => {
+    setFbCommentsLoading(true);
+    const { data, error } = await supabase
+      .from('facebook_comments')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (!error) setFbComments((data as FacebookComment[]) ?? []);
+    setFbCommentsLoading(false);
+  }, []);
+
+  useEffect(() => { loadFbComments(); }, [loadFbComments]);
+  useRealtimeSubscription('marketing-page-fb-comments', isOffline ? [] : ['facebook_comments'], loadFbComments);
+
+  const commentAction = async (comment: FacebookComment, action: 'reply' | 'hide' | 'delete' | 'block') => {
+    if (action === 'delete' && !window.confirm('Supprimer définitivement ce commentaire ?')) return;
+    if (action === 'block' && !window.confirm(`Bloquer ${comment.from_name ?? 'cette personne'} sur la Page ? Elle ne pourra plus ni commenter ni écrire à la Page.`)) return;
+
+    const message = action === 'reply' ? (commentReplyDrafts[comment.comment_id] ?? '').trim() : undefined;
+    if (action === 'reply' && !message) {
+      toast('Écris une réponse avant d\'envoyer.', 'error');
+      return;
+    }
+
+    setCommentActionBusy(comment.comment_id);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const { data, error } = await supabase.functions.invoke('manage-facebook-comment', {
+      body: { action, comment_id: comment.comment_id, message },
+      headers: sessionData.session ? { Authorization: `Bearer ${sessionData.session.access_token}` } : undefined,
+    });
+    setCommentActionBusy(null);
+    if (error || (data as { error?: string } | null)?.error) {
+      toast((data as { error?: string } | null)?.error ?? "Échec de l'action.", 'error');
+      return;
+    }
+    const successLabels = { reply: 'Réponse publiée.', hide: 'Commentaire masqué.', delete: 'Commentaire supprimé.', block: 'Personne bloquée sur la Page.' };
+    toast(successLabels[action], 'success');
+    if (action === 'reply') setCommentReplyDrafts((prev) => ({ ...prev, [comment.comment_id]: '' }));
+    loadFbComments();
+  };
+
+  const replyToOrder = async (order: MarketingOrder) => {
+    const message = (orderReplyDrafts[order.id] ?? '').trim();
+    if (!message) {
+      toast('Écris une réponse avant d\'envoyer.', 'error');
+      return;
+    }
+    if (!order.customer_phone) {
+      toast('Identifiant du destinataire manquant.', 'error');
+      return;
+    }
+    setOrderReplyBusy(order.id);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const { data, error } = await supabase.functions.invoke('send-facebook-message', {
+      body: { recipient_id: order.customer_phone, message, order_id: order.id },
+      headers: sessionData.session ? { Authorization: `Bearer ${sessionData.session.access_token}` } : undefined,
+    });
+    setOrderReplyBusy(null);
+    if (error || (data as { error?: string } | null)?.error) {
+      toast((data as { error?: string } | null)?.error ?? "Échec de l'envoi.", 'error');
+      return;
+    }
+    toast('Réponse envoyée sur Messenger.', 'success');
+    setOrderReplyDrafts((prev) => ({ ...prev, [order.id]: '' }));
+    setOpenReplyFor(null);
+    loadOrders();
+  };
 
   const publishToFacebook = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -220,6 +311,7 @@ export default function MarketingPage() {
   });
 
   const newCount = orders.filter((o) => o.status === 'nouveau').length;
+  const newCommentsCount = fbComments.filter((c) => c.status === 'nouveau').length;
 
   return (
     <div className="space-y-4">
@@ -227,6 +319,7 @@ export default function MarketingPage() {
         {([
           { id: 'strategie', label: 'Stratégie par canal', icon: Target },
           { id: 'commandes', label: `Commandes reçues${newCount ? ` (${newCount} nouvelles)` : ''}`, icon: Inbox },
+          { id: 'commentaires', label: `Commentaires Facebook${newCommentsCount ? ` (${newCommentsCount})` : ''}`, icon: MessageSquare },
           { id: 'publier', label: 'Publier sur Facebook', icon: Send },
           { id: 'automatisation', label: 'Automatisation (n8n)', icon: Zap },
         ] as { id: Tab; label: string; icon: typeof Target }[]).map(({ id, label, icon: Icon }) => (
@@ -357,16 +450,131 @@ export default function MarketingPage() {
                         {o.customer_phone && <p className="text-sm text-gray-500">{o.customer_phone}</p>}
                         {o.message && <p className="text-sm text-gray-600 mt-1">{o.message}</p>}
                       </div>
-                      <select
-                        value={o.status}
-                        onChange={(e) => updateStatus(o.id, e.target.value as MarketingOrderStatus)}
-                        className="shrink-0 px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                      >
-                        {(Object.keys(MARKETING_ORDER_STATUS_LABELS) as MarketingOrderStatus[]).map((s) => (
-                          <option key={s} value={s}>{MARKETING_ORDER_STATUS_LABELS[s]}</option>
-                        ))}
-                      </select>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {o.channel === 'facebook' && o.customer_phone && (
+                          <button
+                            onClick={() => setOpenReplyFor(openReplyFor === o.id ? null : o.id)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition-colors"
+                          >
+                            <Reply className="w-3.5 h-3.5" />
+                            Répondre
+                          </button>
+                        )}
+                        <select
+                          value={o.status}
+                          onChange={(e) => updateStatus(o.id, e.target.value as MarketingOrderStatus)}
+                          className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        >
+                          {(Object.keys(MARKETING_ORDER_STATUS_LABELS) as MarketingOrderStatus[]).map((s) => (
+                            <option key={s} value={s}>{MARKETING_ORDER_STATUS_LABELS[s]}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
+                    {openReplyFor === o.id && (
+                      <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
+                        <input
+                          value={orderReplyDrafts[o.id] ?? ''}
+                          onChange={(e) => setOrderReplyDrafts((prev) => ({ ...prev, [o.id]: e.target.value }))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') replyToOrder(o); }}
+                          placeholder="Répondre sur Messenger…"
+                          className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                        />
+                        <button
+                          onClick={() => replyToOrder(o)}
+                          disabled={orderReplyBusy === o.id}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+                        >
+                          {orderReplyBusy === o.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'commentaires' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100">
+            <h3 className="font-semibold text-gray-900 text-sm">Commentaires sur les publications de la Page</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Répondre, masquer, supprimer un commentaire, ou bloquer une personne qui se comporte mal.</p>
+          </div>
+          {fbCommentsLoading ? (
+            <div className="text-center py-16 text-gray-400">Chargement…</div>
+          ) : fbComments.length === 0 ? (
+            <div className="text-center py-16 text-gray-400">
+              <MessageSquare className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+              Aucun commentaire pour l'instant.
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {fbComments.map((c) => {
+                const statusMeta = FB_COMMENT_STATUS_META[c.status];
+                const busy = commentActionBusy === c.comment_id;
+                const isModerated = c.status === 'masque' || c.status === 'supprime';
+                return (
+                  <div key={c.id} className="px-5 py-4 space-y-2">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-gray-900">{c.from_name ?? 'Personne inconnue'}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusMeta.bgColor} ${statusMeta.color}`}>
+                            {FB_COMMENT_STATUS_LABELS[c.status]}
+                          </span>
+                          {c.created_time && (
+                            <span className="text-xs text-gray-400">{new Date(c.created_time).toLocaleString('fr-FR')}</span>
+                          )}
+                        </div>
+                        {c.message && <p className="text-sm text-gray-700 mt-1">{c.message}</p>}
+                      </div>
+                    </div>
+                    {!isModerated && (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <input
+                          value={commentReplyDrafts[c.comment_id] ?? ''}
+                          onChange={(e) => setCommentReplyDrafts((prev) => ({ ...prev, [c.comment_id]: e.target.value }))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') commentAction(c, 'reply'); }}
+                          placeholder="Répondre au commentaire…"
+                          className="flex-1 min-w-[180px] rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                        />
+                        <button
+                          onClick={() => commentAction(c, 'reply')}
+                          disabled={busy}
+                          title="Répondre"
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+                        >
+                          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Reply className="w-4 h-4" />}
+                        </button>
+                        <button
+                          onClick={() => commentAction(c, 'hide')}
+                          disabled={busy}
+                          title="Masquer"
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
+                        >
+                          <EyeOff className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => commentAction(c, 'delete')}
+                          disabled={busy}
+                          title="Supprimer"
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 text-red-700 text-sm font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => commentAction(c, 'block')}
+                          disabled={busy}
+                          title="Bloquer cette personne sur la Page"
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 text-red-700 text-sm font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
+                        >
+                          <UserX className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}

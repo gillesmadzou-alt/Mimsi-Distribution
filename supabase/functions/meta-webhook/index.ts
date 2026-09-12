@@ -2,16 +2,20 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 // Remplace le webhook n8n : reçoit DIRECTEMENT les évènements Meta (WhatsApp
-// Business, Messenger, Instagram) et les enregistre dans `marketing_orders`.
-// Un seul point d'entrée pour les 3 plateformes, pointé depuis "URL de
-// rappel" dans Meta for Developers > Cas d'utilisation > [plateforme] >
-// Personnaliser > Configurer des webhooks.
+// Business, Messenger, Instagram, commentaires sur la Page) et les
+// enregistre dans `marketing_orders` (messages) ou `facebook_comments`
+// (commentaires). Un seul point d'entrée pour les 3 plateformes, pointé
+// depuis "URL de rappel" dans Meta for Developers > Cas d'utilisation >
+// [plateforme] > Personnaliser > Configurer des webhooks.
 //
 // Config requise (Supabase secrets) :
 //   supabase secrets set META_VERIFY_TOKEN=<le même token que dans Meta>
 //
 // GET  : poignée de main de vérification Meta (répond hub.challenge).
-// POST : évènements entrants (messages), enregistrés dans marketing_orders.
+// POST : évènements entrants — messages (marketing_orders) et commentaires
+//        de Page (facebook_comments). Les réponses/actions de modération se
+//        font via les fonctions send-facebook-message et
+//        manage-facebook-comment (appelées depuis l'app, pas ici).
 
 function corsHeaders() {
   return {
@@ -38,6 +42,17 @@ type NormalizedMessage = {
   customerPhone: string | null;
   message: string | null;
   externalId: string | null;
+  rawPayload: Record<string, unknown>;
+};
+
+type NormalizedComment = {
+  postId: string | null;
+  commentId: string;
+  parentCommentId: string | null;
+  fromId: string | null;
+  fromName: string | null;
+  message: string | null;
+  createdTime: string | null;
   rawPayload: Record<string, unknown>;
 };
 
@@ -120,6 +135,41 @@ function normalizeEntries(body: Record<string, unknown>): NormalizedMessage[] {
   return results;
 }
 
+// Les commentaires sur les publications de la Page ("feed") arrivent dans le
+// même webhook que les messages Messenger (object === "page"), mais dans
+// entry.changes plutôt que entry.messaging, et vont dans une table à part
+// (facebook_comments), pas marketing_orders.
+function normalizeCommentEntries(body: Record<string, unknown>): NormalizedComment[] {
+  if (body.object !== "page") return [];
+  const entries = (body.entry as Record<string, unknown>[] | undefined) ?? [];
+  const results: NormalizedComment[] = [];
+
+  for (const entry of entries) {
+    const changes = (entry.changes as Record<string, unknown>[] | undefined) ?? [];
+    for (const change of changes) {
+      if (change.field !== "feed") continue;
+      const value = (change.value as Record<string, unknown>) ?? {};
+      if (value.item !== "comment") continue;
+      if (value.verb === "remove") continue; // suppression déjà reflétée par l'action de modération elle-même
+      const commentId = value.comment_id as string | undefined;
+      if (!commentId) continue;
+      results.push({
+        postId: (value.post_id as string | undefined) ?? null,
+        commentId,
+        parentCommentId: (value.parent_id as string | undefined) ?? null,
+        fromId: (value.from as { id?: string } | undefined)?.id ?? (value.sender_id as string | undefined) ?? null,
+        fromName: (value.from as { name?: string } | undefined)?.name ?? null,
+        message: (value.message as string | undefined) ?? null,
+        createdTime: value.created_time
+          ? new Date(Number(value.created_time) * 1000).toISOString()
+          : null,
+        rawPayload: value,
+      });
+    }
+  }
+  return results;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders() });
@@ -161,7 +211,8 @@ Deno.serve(async (req: Request) => {
   }
 
   const normalized = normalizeEntries(body);
-  if (normalized.length === 0) {
+  const normalizedComments = normalizeCommentEntries(body);
+  if (normalized.length === 0 && normalizedComments.length === 0) {
     return jsonResponse({ received: true, processed: 0 }, 200);
   }
 
@@ -188,6 +239,30 @@ Deno.serve(async (req: Request) => {
       );
     if (error) {
       console.error("meta-webhook insert error:", error.message);
+      continue;
+    }
+    inserted++;
+  }
+
+  for (const c of normalizedComments) {
+    const { error } = await serviceClient
+      .from("facebook_comments")
+      .upsert(
+        {
+          post_id: c.postId,
+          comment_id: c.commentId,
+          parent_comment_id: c.parentCommentId,
+          from_id: c.fromId,
+          from_name: c.fromName,
+          message: c.message,
+          raw_payload: c.rawPayload,
+          created_time: c.createdTime,
+          status: "nouveau",
+        },
+        { onConflict: "comment_id", ignoreDuplicates: true },
+      );
+    if (error) {
+      console.error("meta-webhook comment insert error:", error.message);
       continue;
     }
     inserted++;
