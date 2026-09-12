@@ -1277,11 +1277,14 @@ export interface Broadcast {
 }
 
 export type FacebookStoryStatus = 'pending' | 'published' | 'failed';
+export type FacebookStoryMediaType = 'photo' | 'video';
 
 export interface FacebookStory {
   id: string;
   status: FacebookStoryStatus;
+  media_type: FacebookStoryMediaType;
   fb_photo_id: string | null;
+  fb_video_id: string | null;
   fb_story_id: string | null;
   error: string | null;
   created_by: string;

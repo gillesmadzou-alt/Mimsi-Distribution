@@ -156,6 +156,8 @@ export default function MarketingPage() {
   const [fbStoriesLoading, setFbStoriesLoading] = useState(true);
   const [storyPreview, setStoryPreview] = useState<{ base64: string; mimeType: string; previewUrl: string } | null>(null);
   const [storyPublishing, setStoryPublishing] = useState(false);
+  const [videoStoryPreview, setVideoStoryPreview] = useState<{ base64: string; mimeType: string; previewUrl: string; sizeMb: number } | null>(null);
+  const [videoStoryPublishing, setVideoStoryPublishing] = useState(false);
 
   const [form, setForm] = useState({
     channel: 'whatsapp' as MarketingChannel,
@@ -418,6 +420,50 @@ export default function MarketingPage() {
     }
     toast('Story publiée sur Facebook.', 'success');
     setStoryPreview(null);
+    loadFbStories();
+  };
+
+  const MAX_VIDEO_STORY_MB = 18;
+
+  const handleVideoStoryFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('video/')) {
+      toast('Choisis un fichier vidéo.', 'error');
+      return;
+    }
+    const sizeMb = file.size / (1024 * 1024);
+    if (sizeMb > MAX_VIDEO_STORY_MB) {
+      toast(`Vidéo trop volumineuse (${sizeMb.toFixed(1)} Mo) — reste sur un clip court de moins de ${MAX_VIDEO_STORY_MB} Mo.`, 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      setVideoStoryPreview({ base64: result, mimeType: file.type, previewUrl: result, sizeMb });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const publishVideoStory = async () => {
+    if (!videoStoryPreview) {
+      toast('Choisis une vidéo avant de publier.', 'error');
+      return;
+    }
+    setVideoStoryPublishing(true);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const { data, error } = await supabase.functions.invoke('publish-facebook-video-story', {
+      body: { video_base64: videoStoryPreview.base64, mime_type: videoStoryPreview.mimeType },
+      headers: sessionData.session ? { Authorization: `Bearer ${sessionData.session.access_token}` } : undefined,
+    });
+    setVideoStoryPublishing(false);
+    if (error || (data as { error?: string } | null)?.error) {
+      toast((data as { error?: string } | null)?.error ?? 'Échec de la publication de la Story vidéo.', 'error');
+      loadFbStories();
+      return;
+    }
+    toast('Story vidéo publiée sur Facebook.', 'success');
+    setVideoStoryPreview(null);
     loadFbStories();
   };
 
@@ -844,12 +890,41 @@ export default function MarketingPage() {
                     <button onClick={() => setStoryPreview(null)} className="text-sm text-gray-500 hover:text-gray-700">Annuler</button>
                   )}
                 </div>
-                <div className="flex items-start gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg p-2.5">
-                  <Film className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <span>Stories vidéo et Facebook Live ne sont pas pris en charge ici : ils nécessitent un flux vidéo/streaming (upload résumable ou diffusion en direct via un logiciel comme OBS), ce qui dépasse une simple publication depuis l'app.</span>
-                </div>
               </div>
             </div>
+
+            <div className="border-t border-gray-100 pt-4 flex items-start gap-4">
+              <label className="shrink-0 w-28 h-48 rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-fuchsia-400 transition-colors overflow-hidden bg-gray-50">
+                {videoStoryPreview ? (
+                  <video src={videoStoryPreview.previewUrl} className="w-full h-full object-cover" muted />
+                ) : (
+                  <>
+                    <Film className="w-6 h-6 text-gray-400 mb-1" />
+                    <span className="text-xs text-gray-400 px-2 text-center">Choisir une vidéo</span>
+                  </>
+                )}
+                <input type="file" accept="video/*" onChange={handleVideoStoryFileChange} className="hidden" />
+              </label>
+              <div className="flex-1 space-y-3">
+                <p className="text-sm font-medium text-gray-900">Story vidéo</p>
+                <p className="text-xs text-gray-500">Clip court recommandé (quelques secondes, max {MAX_VIDEO_STORY_MB} Mo). {videoStoryPreview && `Fichier : ${videoStoryPreview.sizeMb.toFixed(1)} Mo.`}</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={publishVideoStory}
+                    disabled={!videoStoryPreview || videoStoryPublishing}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white text-sm font-medium shadow-sm hover:shadow-md transition-all disabled:opacity-50"
+                  >
+                    {videoStoryPublishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Film className="w-4 h-4" />}
+                    {videoStoryPublishing ? 'Publication…' : 'Publier la Story vidéo'}
+                  </button>
+                  {videoStoryPreview && (
+                    <button onClick={() => setVideoStoryPreview(null)} className="text-sm text-gray-500 hover:text-gray-700">Annuler</button>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400">Facebook Live (diffusion en direct) n'est pas pris en charge ici — ça nécessite un flux RTMP en direct via un logiciel comme OBS, hors du cadre d'une simple publication.</p>
+              </div>
+            </div>
+
             {!fbStoriesLoading && fbStories.length > 0 && (
               <div className="border-t border-gray-100 pt-3 space-y-2">
                 {fbStories.slice(0, 5).map((s) => (
@@ -859,6 +934,7 @@ export default function MarketingPage() {
                     }`}>
                       {s.status === 'published' ? <CheckCircle2 className="w-3.5 h-3.5" /> : s.status === 'failed' ? <AlertTriangle className="w-3.5 h-3.5" /> : <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                     </div>
+                    <span className="text-gray-400 text-xs">{s.media_type === 'video' ? <Film className="w-3 h-3 inline" /> : <ImageIcon className="w-3 h-3 inline" />}</span>
                     <span className="text-gray-500 text-xs flex-1">{new Date(s.created_at).toLocaleString('fr-FR')}</span>
                     {s.error && <span className="text-xs text-red-600 truncate max-w-[50%]">{s.error}</span>}
                   </div>
