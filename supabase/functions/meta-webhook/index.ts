@@ -1,0 +1,199 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "jsr:@supabase/supabase-js@2";
+
+// Remplace le webhook n8n : reçoit DIRECTEMENT les évènements Meta (WhatsApp
+// Business, Messenger, Instagram) et les enregistre dans `marketing_orders`.
+// Un seul point d'entrée pour les 3 plateformes, pointé depuis "URL de
+// rappel" dans Meta for Developers > Cas d'utilisation > [plateforme] >
+// Personnaliser > Configurer des webhooks.
+//
+// Config requise (Supabase secrets) :
+//   supabase secrets set META_VERIFY_TOKEN=<le même token que dans Meta>
+//
+// GET  : poignée de main de vérification Meta (répond hub.challenge).
+// POST : évènements entrants (messages), enregistrés dans marketing_orders.
+
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
+}
+
+function textResponse(body: string, status: number) {
+  return new Response(body, { status, headers: { ...corsHeaders(), "Content-Type": "text/plain" } });
+}
+
+function jsonResponse(body: Record<string, unknown>, status: number) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders(), "Content-Type": "application/json" },
+  });
+}
+
+type NormalizedMessage = {
+  channel: "whatsapp" | "facebook" | "instagram";
+  customerName: string | null;
+  customerPhone: string | null;
+  message: string | null;
+  externalId: string | null;
+  rawPayload: Record<string, unknown>;
+};
+
+// Extrait le texte utilisable d'un message WhatsApp, quel que soit son type.
+function extractWhatsappText(msg: Record<string, unknown>): string | null {
+  const type = msg.type as string | undefined;
+  if (type === "text") return (msg.text as { body?: string } | undefined)?.body ?? null;
+  if (type === "button") return (msg.button as { text?: string } | undefined)?.text ?? null;
+  if (type === "interactive") {
+    const interactive = msg.interactive as Record<string, unknown> | undefined;
+    return (
+      (interactive?.button_reply as { title?: string } | undefined)?.title ??
+      (interactive?.list_reply as { title?: string } | undefined)?.title ??
+      null
+    );
+  }
+  if (type) return `[message de type ${type}]`;
+  return null;
+}
+
+// Un même évènement Meta ("entry") peut regrouper WhatsApp, Messenger et
+// Instagram selon la valeur du champ "object" à la racine du webhook.
+function normalizeEntries(body: Record<string, unknown>): NormalizedMessage[] {
+  const object = body.object as string | undefined;
+  const entries = (body.entry as Record<string, unknown>[] | undefined) ?? [];
+  const results: NormalizedMessage[] = [];
+
+  if (object === "whatsapp_business_account") {
+    for (const entry of entries) {
+      const changes = (entry.changes as Record<string, unknown>[] | undefined) ?? [];
+      for (const change of changes) {
+        if (change.field !== "messages") continue;
+        const value = (change.value as Record<string, unknown>) ?? {};
+        const messages = (value.messages as Record<string, unknown>[] | undefined) ?? [];
+        const contacts = (value.contacts as Record<string, unknown>[] | undefined) ?? [];
+        for (const msg of messages) {
+          const from = msg.from as string | undefined;
+          const contact = contacts.find(
+            (c) => (c.wa_id as string | undefined) === from,
+          ) as Record<string, unknown> | undefined;
+          const profile = contact?.profile as { name?: string } | undefined;
+          results.push({
+            channel: "whatsapp",
+            customerName: profile?.name ?? null,
+            customerPhone: from ?? null,
+            message: extractWhatsappText(msg),
+            externalId: (msg.id as string | undefined) ?? null,
+            rawPayload: msg,
+          });
+        }
+        // Les accusés de statut (delivered/read) n'ont pas de "messages" à
+        // traiter : on les ignore silencieusement (pas d'erreur, rien à
+        // enregistrer).
+      }
+    }
+    return results;
+  }
+
+  if (object === "page" || object === "instagram") {
+    const channel: "facebook" | "instagram" = object === "page" ? "facebook" : "instagram";
+    for (const entry of entries) {
+      const messaging = (entry.messaging as Record<string, unknown>[] | undefined) ?? [];
+      for (const event of messaging) {
+        const message = event.message as Record<string, unknown> | undefined;
+        if (!message || message.is_echo) continue; // ignore les messages envoyés par la Page elle-même
+        const sender = event.sender as { id?: string } | undefined;
+        results.push({
+          channel,
+          customerName: null, // nécessiterait un appel Graph API supplémentaire (profil PSID/IGSID)
+          customerPhone: sender?.id ?? null, // PSID/IGSID, pas un numéro — sert d'identifiant pour répondre
+          message: (message.text as string | undefined) ?? null,
+          externalId: (message.mid as string | undefined) ?? null,
+          rawPayload: event,
+        });
+      }
+    }
+    return results;
+  }
+
+  return results;
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders() });
+  }
+
+  const url = new URL(req.url);
+
+  // --- Poignée de main de vérification (Meta appelle en GET une seule fois
+  // à chaque (ré)enregistrement de l'URL de rappel) ---
+  if (req.method === "GET") {
+    const mode = url.searchParams.get("hub.mode");
+    const token = url.searchParams.get("hub.verify_token");
+    const challenge = url.searchParams.get("hub.challenge");
+
+    const expectedToken = Deno.env.get("META_VERIFY_TOKEN");
+    if (!expectedToken) {
+      console.error("META_VERIFY_TOKEN n'est pas configuré côté serveur.");
+      return textResponse("Webhook non configuré côté serveur.", 500);
+    }
+
+    if (mode === "subscribe" && token === expectedToken && challenge) {
+      return textResponse(challenge, 200);
+    }
+    return textResponse("Vérification échouée", 403);
+  }
+
+  if (req.method !== "POST") {
+    return jsonResponse({ error: "Méthode non autorisée" }, 405);
+  }
+
+  // --- Évènements entrants ---
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    // Toujours répondre 200 même en cas de payload invalide, sinon Meta
+    // considère le webhook en échec et réessaie en boucle.
+    return jsonResponse({ received: true, error: "Corps JSON invalide ignoré" }, 200);
+  }
+
+  const normalized = normalizeEntries(body);
+  if (normalized.length === 0) {
+    return jsonResponse({ received: true, processed: 0 }, 200);
+  }
+
+  const serviceClient = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+
+  let inserted = 0;
+  for (const msg of normalized) {
+    const { error } = await serviceClient
+      .from("marketing_orders")
+      .upsert(
+        {
+          channel: msg.channel,
+          customer_name: msg.customerName,
+          customer_phone: msg.customerPhone,
+          message: msg.message,
+          raw_payload: msg.rawPayload,
+          external_id: msg.externalId,
+          status: "nouveau",
+        },
+        msg.externalId ? { onConflict: "channel,external_id", ignoreDuplicates: true } : undefined,
+      );
+    if (error) {
+      console.error("meta-webhook insert error:", error.message);
+      continue;
+    }
+    inserted++;
+  }
+
+  // Toujours 200, même en cas d'erreurs partielles : Meta ne doit pas
+  // réessayer indéfiniment un évènement déjà (au moins partiellement) traité.
+  return jsonResponse({ received: true, processed: inserted }, 200);
+});
