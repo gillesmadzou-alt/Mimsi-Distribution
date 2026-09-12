@@ -3,6 +3,7 @@ import {
   supabase, MarketingOrder, MarketingChannel, MarketingOrderStatus,
   MARKETING_CHANNEL_LABELS, MARKETING_CHANNEL_META,
   MARKETING_ORDER_STATUS_LABELS, MARKETING_ORDER_STATUS_META,
+  FacebookPost,
 } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
@@ -10,9 +11,10 @@ import { useToast } from '@/contexts/ToastContext';
 import {
   Facebook, Instagram, MessageCircle, Music2, Inbox, Zap, Plus, X,
   Target, Calendar, Users, Lightbulb, Copy, CheckCircle2, ExternalLink,
+  Send, Link2, AlertTriangle, Loader2,
 } from 'lucide-react';
 
-type Tab = 'strategie' | 'commandes' | 'automatisation';
+type Tab = 'strategie' | 'commandes' | 'publier' | 'automatisation';
 
 interface ChannelStrategy {
   channel: MarketingChannel;
@@ -100,6 +102,12 @@ export default function MarketingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const [fbPosts, setFbPosts] = useState<FacebookPost[]>([]);
+  const [fbLoading, setFbLoading] = useState(true);
+  const [fbMessage, setFbMessage] = useState('');
+  const [fbLink, setFbLink] = useState('');
+  const [publishing, setPublishing] = useState(false);
+
   const [form, setForm] = useState({
     channel: 'whatsapp' as MarketingChannel,
     customer_name: '',
@@ -124,6 +132,44 @@ export default function MarketingPage() {
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
   useRealtimeSubscription('marketing-page', isOffline ? [] : ['marketing_orders'], loadOrders);
+
+  const loadFbPosts = useCallback(async () => {
+    setFbLoading(true);
+    const { data, error } = await supabase
+      .from('facebook_posts')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (!error) setFbPosts((data as FacebookPost[]) ?? []);
+    setFbLoading(false);
+  }, []);
+
+  useEffect(() => { loadFbPosts(); }, [loadFbPosts]);
+  useRealtimeSubscription('marketing-page-fb', isOffline ? [] : ['facebook_posts'], loadFbPosts);
+
+  const publishToFacebook = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!fbMessage.trim()) {
+      toast('Le message est obligatoire.', 'error');
+      return;
+    }
+    setPublishing(true);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const { data, error } = await supabase.functions.invoke('publish-to-facebook', {
+      body: { message: fbMessage.trim(), link: fbLink.trim() || undefined },
+      headers: sessionData.session ? { Authorization: `Bearer ${sessionData.session.access_token}` } : undefined,
+    });
+    setPublishing(false);
+    if (error || (data as { error?: string } | null)?.error) {
+      toast((data as { error?: string } | null)?.error ?? "Échec de la publication.", 'error');
+      loadFbPosts();
+      return;
+    }
+    toast('Publié sur la Page Facebook.', 'success');
+    setFbMessage('');
+    setFbLink('');
+    loadFbPosts();
+  };
 
   const updateStatus = async (id: string, status: MarketingOrderStatus) => {
     const { error } = await supabase.from('marketing_orders').update({ status }).eq('id', id);
@@ -181,6 +227,7 @@ export default function MarketingPage() {
         {([
           { id: 'strategie', label: 'Stratégie par canal', icon: Target },
           { id: 'commandes', label: `Commandes reçues${newCount ? ` (${newCount} nouvelles)` : ''}`, icon: Inbox },
+          { id: 'publier', label: 'Publier sur Facebook', icon: Send },
           { id: 'automatisation', label: 'Automatisation (n8n)', icon: Zap },
         ] as { id: Tab; label: string; icon: typeof Target }[]).map(({ id, label, icon: Icon }) => (
           <button
@@ -325,6 +372,78 @@ export default function MarketingPage() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {tab === 'publier' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+            <h3 className="font-bold text-gray-900 flex items-center gap-2"><Send className="w-5 h-5 text-blue-600" /> Publier une annonce sur la Page Facebook</h3>
+            <p className="text-sm text-gray-600">
+              Publie directement un post sur la Page Facebook Mimsi Distribution — pratique pour annoncer une disponibilité,
+              une promotion ou une actualité, sans quitter l'app.
+            </p>
+            <form onSubmit={publishToFacebook} className="space-y-3">
+              <textarea
+                value={fbMessage}
+                onChange={(e) => setFbMessage(e.target.value)}
+                placeholder="Ex : Madeleines fraîches disponibles aujourd'hui ! Commandez sur WhatsApp au ..."
+                rows={4}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-blue-500"
+              />
+              <div className="relative">
+                <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  value={fbLink}
+                  onChange={(e) => setFbLink(e.target.value)}
+                  placeholder="Lien à joindre (facultatif)"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:border-blue-500"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={publishing}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm font-medium shadow-sm hover:shadow-md transition-all disabled:opacity-50"
+              >
+                {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {publishing ? 'Publication…' : 'Publier maintenant'}
+              </button>
+            </form>
+            <p className="text-xs text-gray-500">
+              Nécessite que les secrets <code className="mx-1 px-1.5 py-0.5 bg-gray-100 rounded">FACEBOOK_PAGE_ID</code> et
+              <code className="mx-1 px-1.5 py-0.5 bg-gray-100 rounded">FACEBOOK_PAGE_ACCESS_TOKEN</code> soient configurés côté
+              Supabase (voir <code className="px-1 py-0.5 bg-gray-100 rounded">docs/marketing-automation-guide.md</code>).
+            </p>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-900 text-sm">Historique des publications</h3>
+            </div>
+            {fbLoading ? (
+              <div className="text-center py-10 text-gray-400 text-sm">Chargement…</div>
+            ) : fbPosts.length === 0 ? (
+              <div className="text-center py-10 text-gray-400 text-sm">Aucune publication envoyée pour l'instant.</div>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {fbPosts.map((p) => (
+                  <div key={p.id} className="px-5 py-3 flex items-start gap-3">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                      p.status === 'published' ? 'bg-emerald-50 text-emerald-600' : p.status === 'failed' ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {p.status === 'published' ? <CheckCircle2 className="w-4 h-4" /> : p.status === 'failed' ? <AlertTriangle className="w-4 h-4" /> : <Loader2 className="w-4 h-4 animate-spin" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-gray-800 line-clamp-2">{p.message}</p>
+                      {p.link && <p className="text-xs text-blue-600 truncate">{p.link}</p>}
+                      {p.error && <p className="text-xs text-red-600 mt-0.5">{p.error}</p>}
+                      <p className="text-xs text-gray-400 mt-1">{new Date(p.created_at).toLocaleString('fr-FR')}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

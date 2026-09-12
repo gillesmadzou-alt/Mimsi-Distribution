@@ -1236,3 +1236,17 @@ export interface MarketingOrder {
   updated_at: string;
   sales_point?: SalesPoint;
 }
+
+export type FacebookPostStatus = 'pending' | 'published' | 'failed';
+
+export interface FacebookPost {
+  id: string;
+  message: string;
+  link: string | null;
+  status: FacebookPostStatus;
+  fb_post_id: string | null;
+  error: string | null;
+  created_by: string;
+  created_at: string;
+  published_at: string | null;
+}
