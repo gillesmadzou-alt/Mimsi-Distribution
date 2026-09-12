@@ -1276,6 +1276,19 @@ export interface Broadcast {
   finished_at: string | null;
 }
 
+export type FacebookStoryStatus = 'pending' | 'published' | 'failed';
+
+export interface FacebookStory {
+  id: string;
+  status: FacebookStoryStatus;
+  fb_photo_id: string | null;
+  fb_story_id: string | null;
+  error: string | null;
+  created_by: string;
+  created_at: string;
+  published_at: string | null;
+}
+
 export type FacebookCommentStatus = 'nouveau' | 'traite' | 'masque' | 'supprime';
 
 export interface FacebookComment {

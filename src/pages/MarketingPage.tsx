@@ -4,7 +4,7 @@ import {
   MARKETING_CHANNEL_LABELS, MARKETING_CHANNEL_META,
   MARKETING_ORDER_STATUS_LABELS, MARKETING_ORDER_STATUS_META,
   FacebookPost, FacebookComment, AutoReplySetting, AutoReplyChannel,
-  Broadcast, BroadcastChannelFilter,
+  Broadcast, BroadcastChannelFilter, FacebookStory,
 } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
@@ -13,7 +13,7 @@ import {
   Facebook, Instagram, MessageCircle, Music2, Inbox, Zap, Plus, X,
   Target, Calendar, Users, Lightbulb, Copy, CheckCircle2, ExternalLink,
   Send, Link2, AlertTriangle, Loader2, MessageSquare, EyeOff, Trash2, UserX, Reply,
-  Bot, Radio, Save,
+  Bot, Radio, Save, Image as ImageIcon, Film,
 } from 'lucide-react';
 
 type Tab = 'strategie' | 'commandes' | 'commentaires' | 'publier' | 'automatisation';
@@ -151,6 +151,11 @@ export default function MarketingPage() {
   const [broadcastMessage, setBroadcastMessage] = useState('');
   const [broadcastChannel, setBroadcastChannel] = useState<BroadcastChannelFilter>('all');
   const [broadcastSending, setBroadcastSending] = useState(false);
+
+  const [fbStories, setFbStories] = useState<FacebookStory[]>([]);
+  const [fbStoriesLoading, setFbStoriesLoading] = useState(true);
+  const [storyPreview, setStoryPreview] = useState<{ base64: string; mimeType: string; previewUrl: string } | null>(null);
+  const [storyPublishing, setStoryPublishing] = useState(false);
 
   const [form, setForm] = useState({
     channel: 'whatsapp' as MarketingChannel,
@@ -363,6 +368,57 @@ export default function MarketingPage() {
     setFbMessage('');
     setFbLink('');
     loadFbPosts();
+  };
+
+  const loadFbStories = useCallback(async () => {
+    setFbStoriesLoading(true);
+    const { data, error } = await supabase
+      .from('facebook_stories')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if (!error) setFbStories((data as FacebookStory[]) ?? []);
+    setFbStoriesLoading(false);
+  }, []);
+
+  useEffect(() => { loadFbStories(); }, [loadFbStories]);
+  useRealtimeSubscription('marketing-page-fb-stories', isOffline ? [] : ['facebook_stories'], loadFbStories);
+
+  const handleStoryFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast('Seules les images sont prises en charge pour les Stories.', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      setStoryPreview({ base64: result, mimeType: file.type, previewUrl: result });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const publishStory = async () => {
+    if (!storyPreview) {
+      toast('Choisis une image avant de publier.', 'error');
+      return;
+    }
+    setStoryPublishing(true);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const { data, error } = await supabase.functions.invoke('publish-facebook-story', {
+      body: { image_base64: storyPreview.base64, mime_type: storyPreview.mimeType },
+      headers: sessionData.session ? { Authorization: `Bearer ${sessionData.session.access_token}` } : undefined,
+    });
+    setStoryPublishing(false);
+    if (error || (data as { error?: string } | null)?.error) {
+      toast((data as { error?: string } | null)?.error ?? 'Échec de la publication de la Story.', 'error');
+      loadFbStories();
+      return;
+    }
+    toast('Story publiée sur Facebook.', 'success');
+    setStoryPreview(null);
+    loadFbStories();
   };
 
   const updateStatus = async (id: string, status: MarketingOrderStatus) => {
@@ -750,6 +806,61 @@ export default function MarketingPage() {
                       {p.error && <p className="text-xs text-red-600 mt-0.5">{p.error}</p>}
                       <p className="text-xs text-gray-400 mt-1">{new Date(p.created_at).toLocaleString('fr-FR')}</p>
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+            <h3 className="font-bold text-gray-900 flex items-center gap-2"><ImageIcon className="w-5 h-5 text-fuchsia-600" /> Publier une Story (photo)</h3>
+            <p className="text-sm text-gray-600">
+              Publie une image en Story sur la Page Facebook — visible 24h, idéal pour une annonce rapide (dispo du jour, promo flash).
+            </p>
+            <div className="flex items-start gap-4">
+              <label className="shrink-0 w-28 h-48 rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center cursor-pointer hover:border-fuchsia-400 transition-colors overflow-hidden bg-gray-50">
+                {storyPreview ? (
+                  <img src={storyPreview.previewUrl} alt="Aperçu Story" className="w-full h-full object-cover" />
+                ) : (
+                  <>
+                    <ImageIcon className="w-6 h-6 text-gray-400 mb-1" />
+                    <span className="text-xs text-gray-400 px-2 text-center">Choisir une image</span>
+                  </>
+                )}
+                <input type="file" accept="image/*" onChange={handleStoryFileChange} className="hidden" />
+              </label>
+              <div className="flex-1 space-y-3">
+                <p className="text-xs text-gray-500">Format vertical recommandé (ex : 1080×1920). L'image sera publiée telle quelle, sans recadrage automatique.</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={publishStory}
+                    disabled={!storyPreview || storyPublishing}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white text-sm font-medium shadow-sm hover:shadow-md transition-all disabled:opacity-50"
+                  >
+                    {storyPublishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />}
+                    {storyPublishing ? 'Publication…' : 'Publier la Story'}
+                  </button>
+                  {storyPreview && (
+                    <button onClick={() => setStoryPreview(null)} className="text-sm text-gray-500 hover:text-gray-700">Annuler</button>
+                  )}
+                </div>
+                <div className="flex items-start gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg p-2.5">
+                  <Film className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>Stories vidéo et Facebook Live ne sont pas pris en charge ici : ils nécessitent un flux vidéo/streaming (upload résumable ou diffusion en direct via un logiciel comme OBS), ce qui dépasse une simple publication depuis l'app.</span>
+                </div>
+              </div>
+            </div>
+            {!fbStoriesLoading && fbStories.length > 0 && (
+              <div className="border-t border-gray-100 pt-3 space-y-2">
+                {fbStories.slice(0, 5).map((s) => (
+                  <div key={s.id} className="flex items-center gap-3 text-sm">
+                    <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
+                      s.status === 'published' ? 'bg-emerald-50 text-emerald-600' : s.status === 'failed' ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {s.status === 'published' ? <CheckCircle2 className="w-3.5 h-3.5" /> : s.status === 'failed' ? <AlertTriangle className="w-3.5 h-3.5" /> : <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    </div>
+                    <span className="text-gray-500 text-xs flex-1">{new Date(s.created_at).toLocaleString('fr-FR')}</span>
+                    {s.error && <span className="text-xs text-red-600 truncate max-w-[50%]">{s.error}</span>}
                   </div>
                 ))}
               </div>
