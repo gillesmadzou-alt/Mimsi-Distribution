@@ -7,9 +7,8 @@ export type OutboundChannel = "facebook" | "instagram" | "whatsapp";
 
 export type SendResult = { ok: true; externalId: string | null } | { ok: false; error: string };
 
-// Facebook Messenger & Instagram Direct partagent la même API Send, avec le
-// token de Page (FACEBOOK_PAGE_ACCESS_TOKEN).
-async function sendViaPageAPI(recipientId: string, text: string): Promise<SendResult> {
+// Messenger : API Send avec le token de Page (FACEBOOK_PAGE_ACCESS_TOKEN).
+async function sendViaFacebookPage(recipientId: string, text: string): Promise<SendResult> {
   const pageToken = Deno.env.get("FACEBOOK_PAGE_ACCESS_TOKEN");
   if (!pageToken) return { ok: false, error: "FACEBOOK_PAGE_ACCESS_TOKEN non configuré côté Supabase." };
 
@@ -25,6 +24,31 @@ async function sendViaPageAPI(recipientId: string, text: string): Promise<SendRe
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     return { ok: false, error: (data as { error?: { message?: string } })?.error?.message ?? "Erreur inconnue de l'API Facebook." };
+  }
+  return { ok: true, externalId: (data as { message_id?: string })?.message_id ?? null };
+}
+
+// Instagram Direct : compte Instagram connecté à l'app via « connexion
+// Instagram » directe (pas via une Page Facebook liée) — ça génère un token
+// propre à Instagram (INSTAGRAM_ACCESS_TOKEN, à récupérer dans Meta for
+// Developers → Mimsi Distribution → Cas d'utilisation → API Instagram →
+// section 2 « Générez des tokens d'accès »), différent du token de Page, et
+// l'appel Graph passe par graph.instagram.com plutôt que graph.facebook.com.
+async function sendViaInstagram(recipientId: string, text: string): Promise<SendResult> {
+  const igToken = Deno.env.get("INSTAGRAM_ACCESS_TOKEN");
+  if (!igToken) return { ok: false, error: "INSTAGRAM_ACCESS_TOKEN non configuré côté Supabase." };
+
+  const res = await fetch(`https://graph.instagram.com/v21.0/me/messages?access_token=${encodeURIComponent(igToken)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      recipient: { id: recipientId },
+      message: { text },
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return { ok: false, error: (data as { error?: { message?: string } })?.error?.message ?? "Erreur inconnue de l'API Instagram." };
   }
   return { ok: true, externalId: (data as { message_id?: string })?.message_id ?? null };
 }
@@ -64,6 +88,7 @@ export async function sendChannelMessage(
   text: string,
 ): Promise<SendResult> {
   if (channel === "whatsapp") return sendViaWhatsapp(recipientId, text);
-  if (channel === "facebook" || channel === "instagram") return sendViaPageAPI(recipientId, text);
+  if (channel === "facebook") return sendViaFacebookPage(recipientId, text);
+  if (channel === "instagram") return sendViaInstagram(recipientId, text);
   return { ok: false, error: `Canal non pris en charge pour l'envoi : ${channel}` };
 }
