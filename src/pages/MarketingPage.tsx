@@ -15,7 +15,7 @@ import {
   Target, Calendar, Users, Lightbulb, CheckCircle2,
   Send, Link2, AlertTriangle, Loader2, MessageSquare, EyeOff, Trash2, UserX, Reply,
   Bot, Radio, Save, Image as ImageIcon, Film, Clock, PauseCircle, LayoutGrid,
-  Wallet, BellRing,
+  Wallet, BellRing, CreditCard, Copy, ExternalLink,
 } from 'lucide-react';
 import { formatFCFA } from '@/lib/supabase';
 
@@ -129,12 +129,18 @@ export default function MarketingPage() {
   const { profile } = useAuth();
   const { fetchWithCache, isOffline } = useOfflineFetch();
   const [platform, setPlatform] = useState<Platform>('overview');
+  const [campaignChannel, setCampaignChannel] = useState<MarketingChannel>('facebook');
   const [orders, setOrders] = useState<MarketingOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'all' | MarketingOrderStatus>('all');
   const [overviewChannelFilter, setOverviewChannelFilter] = useState<'all' | MarketingChannel>('all');
   const [showAdd, setShowAdd] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  const [paymentModalOrder, setPaymentModalOrder] = useState<MarketingOrder | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentRequesting, setPaymentRequesting] = useState(false);
+  const [paymentResult, setPaymentResult] = useState<{ url: string; copied: boolean } | null>(null);
 
   const [pendingReceivables, setPendingReceivables] = useState<{ count: number; totalDue: number }>({ count: 0, totalDue: 0 });
   const [recentPayments, setRecentPayments] = useState<{ id: string; amount_fcfa: number; payment_date: string; sales_point_name: string | null }[]>([]);
@@ -524,6 +530,51 @@ export default function MarketingPage() {
     loadFbStories();
   };
 
+  const openPaymentModal = (order: MarketingOrder) => {
+    setPaymentModalOrder(order);
+    setPaymentAmount('');
+    setPaymentResult(null);
+  };
+
+  const requestCardPayment = async () => {
+    if (!paymentModalOrder) return;
+    const amount = Number(paymentAmount);
+    if (!amount || amount <= 0) {
+      toast('Indique un montant valide.', 'error');
+      return;
+    }
+    setPaymentRequesting(true);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const { data, error } = await supabase.functions.invoke('initiate-card-payment', {
+      body: {
+        amount_fcfa: amount,
+        customer_name: paymentModalOrder.customer_name,
+        customer_phone: paymentModalOrder.customer_phone,
+        marketing_order_id: paymentModalOrder.id,
+      },
+      headers: sessionData.session ? { Authorization: `Bearer ${sessionData.session.access_token}` } : undefined,
+    });
+    setPaymentRequesting(false);
+    if (error || (data as { error?: string } | null)?.error) {
+      toast((data as { error?: string } | null)?.error ?? "Échec de la création du lien de paiement.", 'error');
+      return;
+    }
+    const url = (data as { payment_url?: string })?.payment_url;
+    if (!url) {
+      toast("CinetPay n'a pas renvoyé de lien de paiement.", 'error');
+      return;
+    }
+    setPaymentResult({ url, copied: false });
+  };
+
+  const copyPaymentLink = () => {
+    if (!paymentResult) return;
+    navigator.clipboard?.writeText(paymentResult.url).then(() => {
+      setPaymentResult((prev) => (prev ? { ...prev, copied: true } : prev));
+      setTimeout(() => setPaymentResult((prev) => (prev ? { ...prev, copied: false } : prev)), 2000);
+    });
+  };
+
   const updateStatus = async (id: string, status: MarketingOrderStatus) => {
     const { error } = await supabase.from('marketing_orders').update({ status }).eq('id', id);
     if (error) {
@@ -675,6 +726,13 @@ export default function MarketingPage() {
                           Répondre
                         </button>
                       )}
+                      <button
+                        onClick={() => openPaymentModal(o)}
+                        title="Demander un paiement par carte"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-50 text-violet-700 text-sm font-medium hover:bg-violet-100 transition-colors"
+                      >
+                        <CreditCard className="w-3.5 h-3.5" />
+                      </button>
                       <select
                         value={o.status}
                         onChange={(e) => updateStatus(o.id, e.target.value as MarketingOrderStatus)}
@@ -805,6 +863,41 @@ export default function MarketingPage() {
     );
   };
 
+  // Regroupe, par canal, la stratégie ainsi que tout ce qu'il faut pour
+  // préparer une campagne et la diffuser (bot d'auto-réponse + diffusion
+  // groupée). Les pages Facebook/WhatsApp/Instagram/TikTok redeviennent de
+  // simples fils de discussion, comme dans les applications natives.
+  const renderCampaignPrepSection = () => {
+    const hasAutoReply = campaignChannel === 'facebook' || campaignChannel === 'whatsapp' || campaignChannel === 'instagram';
+    const hasBroadcast = campaignChannel === 'facebook' || campaignChannel === 'whatsapp' || campaignChannel === 'instagram';
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
+        <h3 className="font-bold text-gray-900 flex items-center gap-2"><Target className="w-5 h-5 text-amber-600" /> Préparation de campagne</h3>
+        <p className="text-sm text-gray-600">Toutes les stratégies par réseau, ainsi que le bot de bienvenue et la diffusion groupée pour préparer puis lancer une campagne.</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          {PLATFORMS.filter((p) => p.id !== 'overview').map(({ id, label, icon: Icon, iconColor }) => (
+            <button
+              key={id}
+              onClick={() => setCampaignChannel(id as MarketingChannel)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                campaignChannel === id ? 'bg-amber-500 text-white shadow-sm' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <Icon className={`w-3.5 h-3.5 ${campaignChannel === id ? '' : iconColor}`} />
+              {label}
+            </button>
+          ))}
+        </div>
+        {renderStrategyCard(campaignChannel)}
+        {hasAutoReply && renderAutoReplyCard(campaignChannel as AutoReplyChannel)}
+        {hasBroadcast && renderDiffusionCard(campaignChannel as BroadcastChannelFilter)}
+        {!hasAutoReply && !hasBroadcast && (
+          <p className="text-xs text-gray-400">Le bot et la diffusion groupée arriveront ici dès qu'une intégration technique existera pour TikTok.</p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 flex-wrap">
@@ -849,6 +942,8 @@ export default function MarketingPage() {
               );
             })}
           </div>
+
+          {renderCampaignPrepSection()}
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
             <h3 className="font-bold text-gray-900 flex items-center gap-2"><BellRing className="w-5 h-5 text-amber-600" /> Alertes paiement</h3>
@@ -957,15 +1052,24 @@ export default function MarketingPage() {
                             {o.customer_phone && <p className="text-sm text-gray-500">{o.customer_phone}</p>}
                             {o.message && <p className="text-sm text-gray-600 mt-1">{o.message}</p>}
                           </div>
-                          <select
-                            value={o.status}
-                            onChange={(e) => updateStatus(o.id, e.target.value as MarketingOrderStatus)}
-                            className="shrink-0 px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                          >
-                            {(Object.keys(MARKETING_ORDER_STATUS_LABELS) as MarketingOrderStatus[]).map((s) => (
-                              <option key={s} value={s}>{MARKETING_ORDER_STATUS_LABELS[s]}</option>
-                            ))}
-                          </select>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => openPaymentModal(o)}
+                              title="Demander un paiement par carte"
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-50 text-violet-700 text-sm font-medium hover:bg-violet-100 transition-colors"
+                            >
+                              <CreditCard className="w-3.5 h-3.5" />
+                            </button>
+                            <select
+                              value={o.status}
+                              onChange={(e) => updateStatus(o.id, e.target.value as MarketingOrderStatus)}
+                              className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            >
+                              {(Object.keys(MARKETING_ORDER_STATUS_LABELS) as MarketingOrderStatus[]).map((s) => (
+                                <option key={s} value={s}>{MARKETING_ORDER_STATUS_LABELS[s]}</option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
                       </div>
                     );
@@ -979,7 +1083,6 @@ export default function MarketingPage() {
       {platform === 'facebook' && (
         <div className="space-y-4">
           {renderStatusNote(CheckCircle2, 'text-emerald-800', 'bg-emerald-50 border-emerald-100', "Connecté et actif : messages, commentaires et publications passent directement par l'app (webhook meta-webhook).")}
-          {renderStrategyCard('facebook')}
           {renderOrdersSection('facebook', { allowReply: true, emptyHint: "Aucune commande pour l'instant. Les messages reçus sur Messenger apparaîtront ici automatiquement." })}
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -1192,21 +1295,22 @@ export default function MarketingPage() {
             )}
           </div>
 
-          {renderAutoReplyCard('facebook')}
-          {renderDiffusionCard('facebook')}
+          <p className="text-sm text-gray-500">
+            📣 Bot de bienvenue et diffusion groupée : onglet <span className="font-medium text-gray-900">Vue d'ensemble</span> → Préparation de campagne.
+          </p>
         </div>
       )}
 
       {platform === 'whatsapp' && (
         <div className="space-y-4">
           {renderStatusNote(AlertTriangle, 'text-amber-800', 'bg-amber-50 border-amber-100', "Numéro de test actif pour les essais techniques. Pour un usage réel avec tes clients, il faut enregistrer un numéro WhatsApp de production dans Meta for Developers.")}
-          {renderStrategyCard('whatsapp')}
           {renderOrdersSection('whatsapp', { emptyHint: "Aucune commande pour l'instant. Les messages reçus sur WhatsApp apparaîtront ici automatiquement." })}
-          {renderAutoReplyCard('whatsapp')}
-          {renderDiffusionCard('whatsapp')}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
             <p className="text-sm text-gray-600">
               💰 La relance des points de vente en impayé (WhatsApp) se trouve sur la page <span className="font-medium text-gray-900">Créances</span>, bouton « Relancer les impayés ».
+            </p>
+            <p className="text-sm text-gray-500 mt-2">
+              📣 Bot de bienvenue et diffusion groupée : onglet <span className="font-medium text-gray-900">Vue d'ensemble</span> → Préparation de campagne.
             </p>
           </div>
         </div>
@@ -1215,18 +1319,90 @@ export default function MarketingPage() {
       {platform === 'instagram' && (
         <div className="space-y-4">
           {renderStatusNote(Clock, 'text-amber-800', 'bg-amber-50 border-amber-100', "Pas encore connecté : il faut d'abord créer/lier un compte Instagram professionnel à la Page Facebook avant que les messages et le bot ne fonctionnent ici.")}
-          {renderStrategyCard('instagram')}
           {renderOrdersSection('instagram', { emptyHint: "Aucune commande pour l'instant — normal tant qu'Instagram n'est pas connecté." })}
-          {renderAutoReplyCard('instagram')}
-          {renderDiffusionCard('instagram')}
+          <p className="text-sm text-gray-500">
+            📣 Bot de bienvenue et diffusion groupée : onglet <span className="font-medium text-gray-900">Vue d'ensemble</span> → Préparation de campagne.
+          </p>
         </div>
       )}
 
       {platform === 'tiktok' && (
         <div className="space-y-4">
           {renderStatusNote(PauseCircle, 'text-gray-600', 'bg-gray-50 border-gray-200', "En pause : TikTok ne propose pas d'API pour recevoir les messages directs sur un compte classique. Saisie manuelle des commandes en attendant (ou une alternative payante via TikTok Ads plus tard).")}
-          {renderStrategyCard('tiktok')}
           {renderOrdersSection('tiktok', { emptyHint: "Aucune commande — saisis-les manuellement avec le bouton ci-dessus en attendant une intégration technique." })}
+        </div>
+      )}
+
+      {paymentModalOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setPaymentModalOrder(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2"><CreditCard className="w-5 h-5 text-violet-600" /> Paiement par carte</h3>
+              <button type="button" onClick={() => setPaymentModalOrder(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-sm text-gray-600">
+              Client : <span className="font-medium text-gray-900">{paymentModalOrder.customer_name ?? 'Client sans nom'}</span>
+              {paymentModalOrder.customer_phone && <> · {paymentModalOrder.customer_phone}</>}
+            </p>
+
+            {!paymentResult ? (
+              <>
+                <div>
+                  <label className="text-sm text-gray-600 block mb-1">Montant (FCFA)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    placeholder="Ex : 5000"
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-violet-500"
+                  />
+                </div>
+                <p className="text-xs text-gray-400">Un lien de paiement sécurisé CinetPay (Visa/Mastercard) sera généré, à envoyer au client.</p>
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => setPaymentModalOrder(null)} className="flex-1 rounded-xl bg-gray-100 py-2.5 text-sm font-medium text-gray-700">Annuler</button>
+                  <button
+                    type="button"
+                    onClick={requestCardPayment}
+                    disabled={paymentRequesting}
+                    className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+                  >
+                    {paymentRequesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+                    {paymentRequesting ? 'Génération…' : 'Générer le lien'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="bg-violet-50 border border-violet-100 rounded-xl p-3 space-y-2">
+                  <p className="text-xs text-violet-700 font-medium">Lien de paiement généré :</p>
+                  <p className="text-sm text-gray-800 break-all">{paymentResult.url}</p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={copyPaymentLink}
+                    className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-gray-100 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 transition-colors"
+                  >
+                    <Copy className="w-4 h-4" />
+                    {paymentResult.copied ? 'Copié !' : 'Copier le lien'}
+                  </button>
+                  <a
+                    href={paymentResult.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 py-2.5 text-sm font-medium text-white"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Ouvrir le lien
+                  </a>
+                </div>
+                <button type="button" onClick={() => setPaymentModalOrder(null)} className="w-full rounded-xl bg-gray-50 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 transition-colors">
+                  Fermer
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
 
