@@ -138,10 +138,15 @@ function getCachedSession(): Session | null {
   }
 }
 
-function cachePwdHash(password: string) {
-  hashPassword(password).then((hash) => {
-    try { localStorage.setItem(PWD_HASH_KEY, hash); } catch { /* ignore */ }
-  });
+// Retourne la promesse (au lieu d'un fire-and-forget) : l'appelant doit
+// l'attendre avant de considérer la connexion terminée, sinon l'écriture
+// (~200 000 itérations PBKDF2) peut ne pas aboutir si l'app est fermée ou
+// mise en arrière-plan juste après une connexion en ligne — laissant le
+// mode hors ligne inutilisable ensuite alors que l'utilisateur s'est bien
+// connecté.
+async function cachePwdHash(password: string): Promise<void> {
+  const hash = await hashPassword(password);
+  try { localStorage.setItem(PWD_HASH_KEY, hash); } catch { /* ignore */ }
 }
 
 function getCachedPwdHash(): string | null {
@@ -168,10 +173,12 @@ function clearCache() {
   clearPageCache();
 }
 
-function isSessionExpired(session: Session): boolean {
-  if (!session.expires_at) return false;
-  return session.expires_at * 1000 < Date.now();
-}
+// Note : le mode hors ligne ne fait aucun appel réseau authentifié (tout
+// vient du cache local via readCache/precache), donc l'expiration du jeton
+// (session.expires_at, ~1h par défaut chez Supabase) n'a aucune incidence
+// tant qu'on reste hors ligne — on ne la vérifie donc plus pour bloquer
+// l'accès hors ligne (voir signIn ci-dessous). Un vrai rafraîchissement du
+// jeton aura lieu normalement, via supabase-js, dès le retour du réseau.
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -224,9 +231,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const init = async () => {
       // When offline, skip the network call entirely and use cached session.
+      // Le jeton peut être périmé : sans importance hors ligne, puisqu'aucun
+      // appel authentifié n'est fait tant qu'on reste déconnecté — il sera
+      // rafraîchi normalement au retour du réseau.
       if (!navigator.onLine) {
         const cachedSession = getCachedSession();
-        if (cachedSession?.user && !isSessionExpired(cachedSession)) {
+        if (cachedSession?.user) {
           setSession(cachedSession);
           setUser(cachedSession.user);
           const cachedProfile = getCachedProfile();
@@ -257,8 +267,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       } else {
+        // En ligne, mais supabase-js n'a pas retrouvé de session interne
+        // (ex: stockage navigateur partiellement effacé) — on retombe sur
+        // notre propre cache plutôt que de forcer une reconnexion.
         const cachedSession = getCachedSession();
-        if (cachedSession?.user && !isSessionExpired(cachedSession)) {
+        if (cachedSession?.user) {
           setSession(cachedSession);
           setUser(cachedSession.user);
           const cachedProfile = getCachedProfile();
@@ -352,9 +365,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!constantTimeEquals(inputHash, cachedPwdHash)) {
           return { error: 'Mot de passe incorrect.' };
         }
-        if (isSessionExpired(cachedSession)) {
-          return { error: 'Session expirée. Reconnectez-vous en ligne pour rafraîchir la session.' };
-        }
+        // Le jeton (cachedSession) peut être périmé : sans conséquence hors
+        // ligne puisqu'aucun appel authentifié n'est fait tant qu'on reste
+        // déconnecté. Un vrai rafraîchissement aura lieu normalement dès le
+        // retour du réseau (voir l'effet "online").
         setSession(cachedSession);
         setUser(cachedSession.user);
         setProfile(cachedProfile);
@@ -401,7 +415,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: 'Ce compte est désactivé. Contactez un administrateur.' };
       }
       cacheSession(data.session);
-      cachePwdHash(password);
+      await cachePwdHash(password);
       cacheRole(prof.role);
       goOffline(false);
       setSession(data.session);
