@@ -659,118 +659,6 @@ export default function MarketingPage() {
     );
   };
 
-  const renderOrdersSection = (channel: MarketingChannel, opts?: { allowReply?: boolean; emptyHint?: string }) => {
-    const list = orders.filter((o) => o.channel === channel && (statusFilter === 'all' || o.status === statusFilter));
-    return (
-      <div className="space-y-3">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-center gap-3">
-          <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
-            <Inbox className="w-4 h-4 text-gray-400" />
-            Commandes reçues{newCountFor(channel) ? ` (${newCountFor(channel)} nouvelles)` : ''}
-          </h3>
-          <div className="flex items-center gap-2 flex-wrap ml-auto">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as 'all' | MarketingOrderStatus)}
-              className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-            >
-              <option value="all">Tous les statuts</option>
-              {(Object.keys(MARKETING_ORDER_STATUS_LABELS) as MarketingOrderStatus[]).map((s) => (
-                <option key={s} value={s}>{MARKETING_ORDER_STATUS_LABELS[s]}</option>
-              ))}
-            </select>
-            <button
-              onClick={() => openAddFor(channel)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white text-sm font-medium shadow-sm hover:shadow-md transition-all"
-            >
-              <Plus className="w-4 h-4" />
-              Saisir une commande
-            </button>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="text-center py-16 text-gray-400">Chargement…</div>
-        ) : list.length === 0 ? (
-          <div className="text-center py-16 text-gray-400 bg-white rounded-2xl border border-gray-100">
-            <Inbox className="w-10 h-10 mx-auto mb-2 text-gray-300" />
-            {opts?.emptyHint ?? 'Aucune commande pour l\'instant.'}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {list.map((o) => {
-              const statusMeta = MARKETING_ORDER_STATUS_META[o.status];
-              return (
-                <div key={o.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusMeta.bgColor} ${statusMeta.color}`}>
-                          {MARKETING_ORDER_STATUS_LABELS[o.status]}
-                        </span>
-                        <span className="text-xs text-gray-400">
-                          {new Date(o.created_at).toLocaleString('fr-FR')}
-                        </span>
-                      </div>
-                      <p className="font-medium text-gray-900 mt-1">{o.customer_name ?? 'Client sans nom'}</p>
-                      {o.customer_phone && <p className="text-sm text-gray-500">{o.customer_phone}</p>}
-                      {o.message && <p className="text-sm text-gray-600 mt-1">{o.message}</p>}
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {opts?.allowReply && o.channel === 'facebook' && o.customer_phone && (
-                        <button
-                          onClick={() => setOpenReplyFor(openReplyFor === o.id ? null : o.id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition-colors"
-                        >
-                          <Reply className="w-3.5 h-3.5" />
-                          Répondre
-                        </button>
-                      )}
-                      <button
-                        onClick={() => openPaymentModal(o)}
-                        title="Demander un paiement par carte"
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-50 text-violet-700 text-sm font-medium hover:bg-violet-100 transition-colors"
-                      >
-                        <CreditCard className="w-3.5 h-3.5" />
-                      </button>
-                      <select
-                        value={o.status}
-                        onChange={(e) => updateStatus(o.id, e.target.value as MarketingOrderStatus)}
-                        className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-                      >
-                        {(Object.keys(MARKETING_ORDER_STATUS_LABELS) as MarketingOrderStatus[]).map((s) => (
-                          <option key={s} value={s}>{MARKETING_ORDER_STATUS_LABELS[s]}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  {openReplyFor === o.id && (
-                    <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
-                      <input
-                        value={orderReplyDrafts[o.id] ?? ''}
-                        onChange={(e) => setOrderReplyDrafts((prev) => ({ ...prev, [o.id]: e.target.value }))}
-                        onKeyDown={(e) => { if (e.key === 'Enter') replyToOrder(o); }}
-                        placeholder="Répondre sur Messenger…"
-                        className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500"
-                      />
-                      <button
-                        onClick={() => replyToOrder(o)}
-                        disabled={orderReplyBusy === o.id}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
-                      >
-                        {orderReplyBusy === o.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   const renderAutoReplyCard = (channel: AutoReplyChannel) => {
     const setting = autoReplySettings.find((s) => s.channel === channel);
     return (
@@ -1018,6 +906,13 @@ export default function MarketingPage() {
                     <option key={s} value={s}>{MARKETING_ORDER_STATUS_LABELS[s]}</option>
                   ))}
                 </select>
+                <button
+                  onClick={() => openAddFor(overviewChannelFilter === 'all' ? 'facebook' : overviewChannelFilter)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white text-sm font-medium shadow-sm hover:shadow-md transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  Saisir une commande
+                </button>
               </div>
             </div>
 
@@ -1053,6 +948,15 @@ export default function MarketingPage() {
                             {o.message && <p className="text-sm text-gray-600 mt-1">{o.message}</p>}
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
+                            {o.channel === 'facebook' && o.customer_phone && (
+                              <button
+                                onClick={() => setOpenReplyFor(openReplyFor === o.id ? null : o.id)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition-colors"
+                              >
+                                <Reply className="w-3.5 h-3.5" />
+                                Répondre
+                              </button>
+                            )}
                             <button
                               onClick={() => openPaymentModal(o)}
                               title="Demander un paiement par carte"
@@ -1071,6 +975,24 @@ export default function MarketingPage() {
                             </select>
                           </div>
                         </div>
+                        {openReplyFor === o.id && (
+                          <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
+                            <input
+                              value={orderReplyDrafts[o.id] ?? ''}
+                              onChange={(e) => setOrderReplyDrafts((prev) => ({ ...prev, [o.id]: e.target.value }))}
+                              onKeyDown={(e) => { if (e.key === 'Enter') replyToOrder(o); }}
+                              placeholder="Répondre sur Messenger…"
+                              className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                            />
+                            <button
+                              onClick={() => replyToOrder(o)}
+                              disabled={orderReplyBusy === o.id}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+                            >
+                              {orderReplyBusy === o.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1083,7 +1005,6 @@ export default function MarketingPage() {
       {platform === 'facebook' && (
         <div className="space-y-4">
           {renderStatusNote(CheckCircle2, 'text-emerald-800', 'bg-emerald-50 border-emerald-100', "Connecté et actif : messages, commentaires et publications passent directement par l'app (webhook meta-webhook).")}
-          {renderOrdersSection('facebook', { allowReply: true, emptyHint: "Aucune commande pour l'instant. Les messages reçus sur Messenger apparaîtront ici automatiquement." })}
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-5 py-3 border-b border-gray-100">
@@ -1296,7 +1217,7 @@ export default function MarketingPage() {
           </div>
 
           <p className="text-sm text-gray-500">
-            📣 Bot de bienvenue et diffusion groupée : onglet <span className="font-medium text-gray-900">Vue d'ensemble</span> → Préparation de campagne.
+            📋 Commandes reçues, 📣 bot de bienvenue et diffusion groupée : onglet <span className="font-medium text-gray-900">Vue d'ensemble</span> (Préparation de campagne + Toutes les commandes, filtrables par canal).
           </p>
         </div>
       )}
@@ -1304,13 +1225,12 @@ export default function MarketingPage() {
       {platform === 'whatsapp' && (
         <div className="space-y-4">
           {renderStatusNote(AlertTriangle, 'text-amber-800', 'bg-amber-50 border-amber-100', "Numéro de test actif pour les essais techniques. Pour un usage réel avec tes clients, il faut enregistrer un numéro WhatsApp de production dans Meta for Developers.")}
-          {renderOrdersSection('whatsapp', { emptyHint: "Aucune commande pour l'instant. Les messages reçus sur WhatsApp apparaîtront ici automatiquement." })}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
             <p className="text-sm text-gray-600">
               💰 La relance des points de vente en impayé (WhatsApp) se trouve sur la page <span className="font-medium text-gray-900">Créances</span>, bouton « Relancer les impayés ».
             </p>
             <p className="text-sm text-gray-500 mt-2">
-              📣 Bot de bienvenue et diffusion groupée : onglet <span className="font-medium text-gray-900">Vue d'ensemble</span> → Préparation de campagne.
+              📋 Commandes reçues, 📣 bot de bienvenue et diffusion groupée : onglet <span className="font-medium text-gray-900">Vue d'ensemble</span> (Préparation de campagne + Toutes les commandes, filtrables par canal).
             </p>
           </div>
         </div>
@@ -1319,9 +1239,8 @@ export default function MarketingPage() {
       {platform === 'instagram' && (
         <div className="space-y-4">
           {renderStatusNote(Clock, 'text-amber-800', 'bg-amber-50 border-amber-100', "Pas encore connecté : il faut d'abord créer/lier un compte Instagram professionnel à la Page Facebook avant que les messages et le bot ne fonctionnent ici.")}
-          {renderOrdersSection('instagram', { emptyHint: "Aucune commande pour l'instant — normal tant qu'Instagram n'est pas connecté." })}
           <p className="text-sm text-gray-500">
-            📣 Bot de bienvenue et diffusion groupée : onglet <span className="font-medium text-gray-900">Vue d'ensemble</span> → Préparation de campagne.
+            📋 Commandes reçues, 📣 bot de bienvenue et diffusion groupée : onglet <span className="font-medium text-gray-900">Vue d'ensemble</span> (Préparation de campagne + Toutes les commandes, filtrables par canal).
           </p>
         </div>
       )}
@@ -1329,7 +1248,9 @@ export default function MarketingPage() {
       {platform === 'tiktok' && (
         <div className="space-y-4">
           {renderStatusNote(PauseCircle, 'text-gray-600', 'bg-gray-50 border-gray-200', "En pause : TikTok ne propose pas d'API pour recevoir les messages directs sur un compte classique. Saisie manuelle des commandes en attendant (ou une alternative payante via TikTok Ads plus tard).")}
-          {renderOrdersSection('tiktok', { emptyHint: "Aucune commande — saisis-les manuellement avec le bouton ci-dessus en attendant une intégration technique." })}
+          <p className="text-sm text-gray-500">
+            📋 Les commandes TikTok saisies manuellement apparaissent dans l'onglet <span className="font-medium text-gray-900">Vue d'ensemble</span> → Toutes les commandes (filtre par canal).
+          </p>
         </div>
       )}
 
