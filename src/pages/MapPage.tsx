@@ -4,6 +4,7 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useAuth } from '@/contexts/AuthContext';
 import { cachePageData, getCachedPageData } from '@/lib/readCache';
 import LeafletMap, { MapMarker, escapeHtml } from '@/components/LeafletMap';
+import TourneeSuiviModal from '@/components/TourneeSuiviModal';
 import {
   MapPin, Package, CheckCircle2, Clock, Undo2, AlertTriangle, CloudOff,
   Filter, Truck, Navigation, Crosshair, ArrowRight
@@ -45,6 +46,7 @@ export default function MapPage({ onNavigate }: { onNavigate?: (page: string) =>
   const [useDateFilter, setUseDateFilter] = useState(false);
   const [selectedPoint, setSelectedPoint] = useState<PointWithStats | null>(null);
   const [liveDrivers, setLiveDrivers] = useState<DriverLocation[]>([]);
+  const [showSuivi, setShowSuivi] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -296,6 +298,14 @@ export default function MapPage({ onNavigate }: { onNavigate?: (page: string) =>
             </select>
           )}
 
+          {(profile?.role ?? 0) >= 2 && batches.length > 0 && (
+            <button onClick={() => setShowSuivi(true)}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-50 text-violet-700 text-sm font-medium hover:bg-violet-100 transition-colors">
+              <Clock className="w-4 h-4" />
+              Suivi tournée
+            </button>
+          )}
+
           <button onClick={loadData}
             className="ml-auto flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 transition-colors">
             <Navigation className="w-4 h-4" />
@@ -461,6 +471,10 @@ export default function MapPage({ onNavigate }: { onNavigate?: (page: string) =>
             </button>
           </div>
         </div>
+      )}
+
+      {showSuivi && (
+        <TourneeSuiviModal batches={batches} drivers={drivers} onClose={() => setShowSuivi(false)} />
       )}
     </div>
   );

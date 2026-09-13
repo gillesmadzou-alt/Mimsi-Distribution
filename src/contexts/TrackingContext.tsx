@@ -32,6 +32,7 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
   const sendLocation = useCallback(async (pos: GeoPosition) => {
     const driverId = driverIdRef.current;
     if (!driverId) return;
+    const recordedAt = new Date(pos.timestamp).toISOString();
     await supabase.from('driver_locations').upsert({
       driver_id: driverId,
       lat: pos.lat,
@@ -39,9 +40,22 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
       accuracy: pos.accuracy,
       heading: pos.heading,
       speed: pos.speed,
-      recorded_at: new Date(pos.timestamp).toISOString(),
+      recorded_at: recordedAt,
       is_tracking: true,
     });
+    // Historique append-only (table distincte, jamais écrasée) pour le
+    // rapport de suivi a posteriori (temps par point de vente / entre
+    // livraisons) — voir src/lib/tourneeSuivi.ts. Erreur ignorée si la
+    // migration driver_location_history n'est pas encore déployée.
+    await supabase.from('driver_location_history').insert({
+      driver_id: driverId,
+      lat: pos.lat,
+      lng: pos.lng,
+      accuracy: pos.accuracy,
+      heading: pos.heading,
+      speed: pos.speed,
+      recorded_at: recordedAt,
+    }).then(() => {}, () => {});
   }, []);
 
   const { position, status } = useGeolocation({
