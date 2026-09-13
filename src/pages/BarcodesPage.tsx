@@ -10,10 +10,15 @@ import { useSync } from '@/contexts/SyncContext';
 import { enqueueJob, buildSteps, isOnline } from '@/lib/offlineQueue';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
-function drawBarcodeOnCanvas(canvas: HTMLCanvasElement, text: string): void {
+// Formats de codes-barres linéaires uniquement (pas de QR) : certains points
+// de vente/supermarchés partenaires scannent une série plutôt qu'une autre.
+export const LINEAR_BARCODE_FORMATS = ['CODE128', 'EAN13', 'EAN8', 'CODE39', 'UPC'] as const;
+export type LinearBarcodeFormat = (typeof LINEAR_BARCODE_FORMATS)[number];
+
+function drawBarcodeOnCanvas(canvas: HTMLCanvasElement, text: string, format: LinearBarcodeFormat = 'CODE128'): void {
   try {
     JsBarcode(canvas, text, {
-      format: 'CODE128',
+      format,
       displayValue: true,
       fontSize: 14,
       height: 80,
@@ -21,7 +26,7 @@ function drawBarcodeOnCanvas(canvas: HTMLCanvasElement, text: string): void {
       margin: 10,
     });
   } catch {
-    // ignore rendering errors for unsupported characters
+    // ignore rendering errors (format incompatible with this code's characters)
   }
 }
 
@@ -118,6 +123,8 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
   const [loading, setLoading] = useState(true);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [labelWidthMm, setLabelWidthMm] = useState(85);
+  const [barcodeFormat, setBarcodeFormat] = useState<LinearBarcodeFormat>('CODE128');
   const [generating, setGenerating] = useState(false);
   const [form, setForm] = useState({ potTypeId: '', quantity: 1, notes: '', baker1Id: '', baker2Id: '', productionRecordId: '' });
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -167,9 +174,9 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
   useEffect(() => {
     barcodes.forEach((b) => {
       const canvas = canvasRefs.current[b.id];
-      if (canvas) drawBarcodeOnCanvas(canvas, b.code);
+      if (canvas) drawBarcodeOnCanvas(canvas, b.code, barcodeFormat);
     });
-  }, [barcodes]);
+  }, [barcodes, barcodeFormat]);
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -303,14 +310,17 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
 
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const margin = 10;
-      const labelWidth = 85;
-      const artworkHeight = 85;
+      const labelWidth = labelWidthMm;
+      // L'artwork de l'étiquette est carré à l'origine (85x85) : on garde ce
+      // ratio 1:1 quelle que soit la largeur choisie pour ne pas le déformer.
+      const artworkHeight = labelWidth;
       const variablePanelHeight = 22;
       const labelHeight = artworkHeight + variablePanelHeight;
       const gapX = 5;
       const gapY = 6;
-      const cols = 2;
-      const rowsPerPage = 2;
+      const headerOffset = 10;
+      const cols = Math.max(1, Math.floor((210 - 2 * margin + gapX) / (labelWidth + gapX)));
+      const rowsPerPage = Math.max(1, Math.floor((297 - margin - headerOffset - margin + gapY) / (labelHeight + gapY)));
 
       let col = 0;
       let row = 0;
@@ -364,7 +374,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
 
         const barcodeCanvas = document.createElement('canvas');
         JsBarcode(barcodeCanvas, b.code, {
-          format: 'CODE128',
+          format: barcodeFormat,
           displayValue: false,
           height: 60,
           width: 2,
@@ -505,7 +515,43 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
         </form>
       </div>
 
-      {available.length > 0 && (
+      {available.length > 0 && (() => {
+        const artworkH = labelWidthMm;
+        const labelH = artworkH + 22;
+        const colsPreview = Math.max(1, Math.floor((210 - 2 * 10 + 5) / (labelWidthMm + 5)));
+        const rowsPreview = Math.max(1, Math.floor((297 - 10 - 10 - 10 + 6) / (labelH + 6)));
+        const perSheet = colsPreview * rowsPreview;
+        const sheetsNeeded = Math.ceil(available.length / perSheet);
+        return (
+        <div className="space-y-3">
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-end gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Largeur étiquette (mm)</label>
+              <input
+                type="number"
+                min={30}
+                max={100}
+                value={labelWidthMm}
+                onChange={(e) => setLabelWidthMm(Math.min(100, Math.max(30, parseInt(e.target.value) || 85)))}
+                className="w-28 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-amber-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Type de code à barres</label>
+              <select
+                value={barcodeFormat}
+                onChange={(e) => setBarcodeFormat(e.target.value as LinearBarcodeFormat)}
+                className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-amber-500 outline-none bg-white"
+              >
+                {LINEAR_BARCODE_FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+            <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+              <span className="font-medium text-gray-900">{perSheet}</span> étiquette{perSheet > 1 ? 's' : ''} / feuille A4
+              {' · '}
+              <span className="font-medium text-gray-900">{available.length}</span> au total → <span className="font-medium text-gray-900">{sheetsNeeded}</span> feuille{sheetsNeeded > 1 ? 's' : ''}
+            </div>
+          </div>
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2">
             <button
@@ -526,7 +572,9 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
           </div>
           {pdfError && <p className="w-full text-sm text-red-600">{pdfError}</p>}
         </div>
-      )}
+        </div>
+        );
+      })()}
 
       {available.length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
