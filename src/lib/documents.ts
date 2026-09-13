@@ -2,6 +2,27 @@ import { supabase, type AppDocument, type DocumentCategory } from './supabase';
 
 const BUCKET = 'documents';
 
+// Formats acceptés pour une pièce justificative : PDF (format d'origine),
+// images (photo d'une facture/reçu papier prise au téléphone) et Word
+// (devis ou reconnaissance de dette rédigés sur ordinateur).
+export const ACCEPTED_DOCUMENT_MIME_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+] as const;
+
+// Attribut `accept` du sélecteur de fichier : les extensions sont ajoutées
+// en plus des types MIME car certains navigateurs/téléphones renvoient un
+// type MIME vide ou générique pour les .doc/.docx.
+export const ACCEPTED_DOCUMENT_FILE_INPUT = [
+  ...ACCEPTED_DOCUMENT_MIME_TYPES,
+  '.pdf', '.jpg', '.jpeg', '.png', '.webp', '.heic', '.doc', '.docx',
+].join(',');
+
 function genId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
@@ -14,14 +35,16 @@ export async function uploadDocument(params: {
   accountingEntryId?: string | null;
   notes?: string | null;
 }): Promise<{ data?: AppDocument; error?: string }> {
-  if (params.file.type !== 'application/pdf') {
-    return { error: 'Seuls les fichiers PDF sont acceptés.' };
+  const mimeType = params.file.type;
+  const looksLikeWord = /\.docx?$/i.test(params.file.name);
+  if (!(ACCEPTED_DOCUMENT_MIME_TYPES as readonly string[]).includes(mimeType) && !looksLikeWord) {
+    return { error: 'Formats acceptés : PDF, Word (.doc/.docx), image (JPEG, PNG, WEBP, HEIC).' };
   }
   const safeName = params.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
   const path = `${params.category}/${genId()}-${safeName}`;
 
   const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, params.file, {
-    contentType: 'application/pdf',
+    contentType: mimeType || 'application/octet-stream',
   });
   if (uploadError) return { error: "Échec de l'envoi du fichier." };
 
@@ -33,6 +56,7 @@ export async function uploadDocument(params: {
       file_path: path,
       file_name: params.file.name,
       file_size: params.file.size,
+      mime_type: mimeType || 'application/octet-stream',
       accounting_entry_id: params.accountingEntryId ?? null,
       notes: params.notes?.trim() || null,
     })

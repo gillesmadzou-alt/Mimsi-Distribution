@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { getRoleAccessLevel, DOCUMENT_CATEGORY_LABELS, type AppDocument, type DocumentCategory } from '@/lib/supabase';
-import { uploadDocument, getDocumentSignedUrl, deleteDocument } from '@/lib/documents';
+import { uploadDocument, getDocumentSignedUrl, deleteDocument, ACCEPTED_DOCUMENT_FILE_INPUT } from '@/lib/documents';
 
 /**
  * Petit badge trombone réutilisable pour rattacher une pièce justificative
@@ -172,8 +172,8 @@ export default function DocumentAttachments({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">Fichier PDF</label>
-                <input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="w-full text-xs" />
+                <label className="mb-1 block text-xs font-medium text-gray-500">Fichier (PDF, Word ou image)</label>
+                <input type="file" accept={ACCEPTED_DOCUMENT_FILE_INPUT} onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="w-full text-xs" />
               </div>
               <button
                 type="button"

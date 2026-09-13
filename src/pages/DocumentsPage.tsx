@@ -3,7 +3,7 @@ import {
   supabase, formatFCFA, getRoleAccessLevel, DOCUMENT_CATEGORY_LABELS,
   type AppDocument, type DocumentCategory, type AccountingEntry,
 } from '@/lib/supabase';
-import { uploadDocument, getDocumentSignedUrl, deleteDocument } from '@/lib/documents';
+import { uploadDocument, getDocumentSignedUrl, deleteDocument, ACCEPTED_DOCUMENT_FILE_INPUT } from '@/lib/documents';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -125,7 +125,7 @@ export default function DocumentsPage({ onNavigate }: { onNavigate?: (page: Page
       </div>
 
       <p className="text-xs text-gray-500">
-        Factures, reçus, devis pro forma et reconnaissances de dette (PDF, toujours importés depuis cet appareil) —
+        Factures, reçus, devis pro forma et reconnaissances de dette (PDF, Word ou image, toujours importés depuis cet appareil) —
         chacun peut être lié à n'importe quelle écriture de la Tenue de compte (caisse, banque, clients, fournisseurs)
         pour apparaître dans le journal correspondant et être joint en annexe des rapports.
       </p>
@@ -291,8 +291,8 @@ function UploadModal({ entries, onClose, onDone }: { entries: AccountingEntry[];
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500">Fichier PDF</label>
-            <input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="w-full text-xs" />
+            <label className="mb-1 block text-xs font-medium text-gray-500">Fichier (PDF, Word ou image)</label>
+            <input type="file" accept={ACCEPTED_DOCUMENT_FILE_INPUT} onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="w-full text-xs" />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-500">Note (facultatif)</label>
