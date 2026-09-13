@@ -44,7 +44,16 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 via-orange-50 to-amber-100 px-4">
+    <div className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 via-orange-50 to-amber-100 px-4">
+      <button
+        type="button"
+        onClick={() => enterKiosk()}
+        className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/90 text-blue-700 text-sm font-medium shadow-sm border border-blue-100 hover:bg-white transition-colors"
+        title="S'enregistrer soi-même : nom, prénom, fonction et une photo obligatoire."
+      >
+        <Camera className="w-4 h-4" />
+        Pointage
+      </button>
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg mb-4">
@@ -118,7 +127,6 @@ export default function AuthPage() {
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none transition-all appearance-none bg-white"
                 >
                   <option value="" disabled>Sélectionnez votre fonction</option>
-                  <option value="0">Pointage (auto-enregistrement)</option>
                   {Object.entries(ROLE_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
