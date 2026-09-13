@@ -3,6 +3,7 @@ import { Archive, ArchiveRestore, AlertCircle, AlertTriangle, Bell, CheckCircle2
 import { supabase, AppNotification } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
+import { useOfflineFetch } from '@/hooks/useCachedFetch';
 
 const TYPE_ICONS = {
   info: Info, warning: AlertTriangle, error: AlertCircle, success: CheckCircle2,
@@ -19,6 +20,7 @@ const PRIORITY_LABEL: Record<AppNotification['priority'], string> = {
 export default function NotificationArchivePage() {
   const { profile } = useAuth();
   const { toast } = useToast();
+  const { fetchWithCache } = useOfflineFetch();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [restoringId, setRestoringId] = useState<string | null>(null);
@@ -26,16 +28,20 @@ export default function NotificationArchivePage() {
   const loadNotifications = useCallback(async () => {
     if (!profile) return;
     setLoading(true);
-    const { data, error } = await supabase
-      .from('app_notifications')
-      .select('*')
-      .eq('user_id', profile.id)
-      .not('archived_at', 'is', null)
-      .order('archived_at', { ascending: false });
-    if (error) toast('Impossible de charger les archives de notifications.', 'error');
-    setNotifications((data as AppNotification[]) ?? []);
+    const result = await fetchWithCache(`notification-archive:${profile.id}`, async () => {
+      const { data, error } = await supabase
+        .from('app_notifications')
+        .select('*')
+        .eq('user_id', profile.id)
+        .not('archived_at', 'is', null)
+        .order('archived_at', { ascending: false });
+      if (error) throw error;
+      return (data as AppNotification[]) ?? [];
+    });
+    if (result.error) toast(result.error, 'error');
+    setNotifications(result.data ?? []);
     setLoading(false);
-  }, [profile, toast]);
+  }, [profile, toast, fetchWithCache]);
 
   useEffect(() => { loadNotifications(); }, [loadNotifications]);
 

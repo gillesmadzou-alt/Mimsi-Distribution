@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Banknote, Building2, CircleDollarSign, Loader2, Pencil, Plus, Search, Trash2, Truck, Users, X } from 'lucide-react';
 import { supabase, formatFCFA, getRoleAccessLevel, type AccountingEntry, type AppDocument, type Supplier } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { fetchDocumentsForEntries, groupDocumentsByEntry } from '@/lib/documents';
@@ -67,6 +68,7 @@ function EntryActions({ entry, allowed, onEdit, onDelete }: {
 export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page: string) => void }) {
   const { profile } = useAuth();
   const { confirmDialog } = useConfirm();
+  const { fetchWithCache, isOffline } = useOfflineFetch();
   const [activeTab, setActiveTab] = useState<Tab>('cash');
   const [entries, setEntries] = useState<AccountingEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,20 +88,30 @@ export default function AccountKeepingPage({ onNavigate }: { onNavigate?: (page:
     setLoading(true);
     setError(null);
     const [entriesResult, suppliersResult] = await Promise.all([
-      supabase.from('accounting_entries').select('*').order('entry_date', { ascending: false }).order('created_at', { ascending: false }),
-      supabase.from('suppliers').select('*').eq('is_active', true).order('last_name'),
+      fetchWithCache('accounting-entries', async () => {
+        const { data, error } = await supabase.from('accounting_entries').select('*').order('entry_date', { ascending: false }).order('created_at', { ascending: false });
+        if (error) throw error;
+        return (data as AccountingEntry[]) ?? [];
+      }),
+      fetchWithCache('accounting-suppliers', async () => {
+        const { data, error } = await supabase.from('suppliers').select('*').eq('is_active', true).order('last_name');
+        if (error) throw error;
+        return (data as Supplier[]) ?? [];
+      }),
     ]);
     if (entriesResult.error) {
-      setError(entriesResult.error.message ?? 'Chargement impossible.');
+      setError(entriesResult.error);
     } else {
-      const loadedEntries = (entriesResult.data as AccountingEntry[]) ?? [];
+      const loadedEntries = entriesResult.data ?? [];
       setEntries(loadedEntries);
-      const docs = await fetchDocumentsForEntries(loadedEntries.map((entry) => entry.id));
-      setDocsByEntry(groupDocumentsByEntry(docs));
+      if (!isOffline && navigator.onLine) {
+        const docs = await fetchDocumentsForEntries(loadedEntries.map((entry) => entry.id));
+        setDocsByEntry(groupDocumentsByEntry(docs));
+      }
     }
-    setSuppliers((suppliersResult.data as Supplier[]) ?? []);
+    setSuppliers(suppliersResult.data ?? []);
     setLoading(false);
-  }, []);
+  }, [fetchWithCache, isOffline]);
 
   useEffect(() => { void loadData(); }, [loadData]);
   useRealtimeSubscription('account-keeping-page', ['accounting_entries', 'suppliers'], loadData);
