@@ -3,8 +3,7 @@ import {
   supabase, MarketingOrder, MarketingChannel, MarketingOrderStatus,
   MARKETING_CHANNEL_LABELS, MARKETING_CHANNEL_META,
   MARKETING_ORDER_STATUS_LABELS, MARKETING_ORDER_STATUS_META,
-  FacebookPost, FacebookComment, AutoReplySetting, AutoReplyChannel,
-  Broadcast, BroadcastChannelFilter, FacebookStory,
+  FacebookPost, FacebookComment, FacebookStory,
 } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
@@ -12,10 +11,10 @@ import { useToast } from '@/contexts/ToastContext';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Facebook, Instagram, MessageCircle, Music2, Inbox, Plus, X,
-  Target, Calendar, Users, Lightbulb, CheckCircle2,
+  Target, CheckCircle2,
   Send, Link2, AlertTriangle, Loader2, MessageSquare, EyeOff, Trash2, UserX, Reply,
-  Bot, Radio, Save, Image as ImageIcon, Film, Clock, PauseCircle, LayoutGrid,
-  Wallet, BellRing, CreditCard, Copy, ExternalLink,
+  Image as ImageIcon, Film, Clock, PauseCircle, LayoutGrid,
+  Wallet, BellRing, CreditCard, Copy, ExternalLink, ArrowRight,
 } from 'lucide-react';
 import { formatFCFA } from '@/lib/supabase';
 
@@ -28,13 +27,6 @@ const PLATFORMS: { id: Platform; label: string; icon: typeof Facebook; iconColor
   { id: 'instagram', label: 'Instagram', icon: Instagram, iconColor: 'text-pink-600' },
   { id: 'tiktok', label: 'TikTok', icon: Music2, iconColor: 'text-gray-900' },
 ];
-
-const BROADCAST_CHANNEL_LABELS: Record<BroadcastChannelFilter, string> = {
-  all: 'Tous les canaux',
-  whatsapp: 'WhatsApp',
-  facebook: 'Facebook',
-  instagram: 'Instagram',
-};
 
 const FB_COMMENT_STATUS_LABELS: Record<FacebookComment['status'], string> = {
   nouveau: 'Nouveau',
@@ -50,86 +42,11 @@ const FB_COMMENT_STATUS_META: Record<FacebookComment['status'], { color: string;
   supprime: { color: 'text-red-700', bgColor: 'bg-red-50' },
 };
 
-interface ChannelStrategy {
-  channel: MarketingChannel;
-  icon: typeof Facebook;
-  iconColor: string;
-  objective: string;
-  audience: string;
-  cadence: string;
-  contentPillars: string[];
-  cta: string;
-}
-
-const STRATEGIES: ChannelStrategy[] = [
-  {
-    channel: 'facebook',
-    icon: Facebook,
-    iconColor: 'text-blue-600',
-    objective: "Notoriété locale et fidélisation : toucher les quartiers desservis et animer une communauté de clients réguliers.",
-    audience: "Ménages et commerces (boutiques, kiosques) des zones déjà livrées + familles élargies qui partagent/recommandent.",
-    cadence: '3 à 4 publications / semaine (photos produit, coulisses de fabrication, avis clients).',
-    contentPillars: [
-      'Photos des madeleines fraîches du jour + lieux de vente (preuve sociale)',
-      'Coulisses production (pétrissage, cuisson) pour la confiance qualité',
-      'Témoignages et avis de points de vente partenaires',
-      'Offres ponctuelles (quantité, événements, mariages)',
-    ],
-    cta: "Bouton « Envoyer un message » → redirige vers WhatsApp pour passer commande.",
-  },
-  {
-    channel: 'whatsapp',
-    icon: MessageCircle,
-    iconColor: 'text-emerald-600',
-    objective: "Canal de commande principal : c'est ici que la conversation se transforme en vente, pas seulement en visibilité.",
-    audience: "Clients chauds (ont déjà vu une publicité FB/IG/TikTok) et clients récurrents (boutiques, particuliers, commandes mariage).",
-    cadence: "Réponse en continu (objectif < 15 min en heures ouvrées) + statuts WhatsApp quotidiens (produit du jour, stock).",
-    contentPillars: [
-      'Catalogue WhatsApp Business (photos, prix, types de pots)',
-      'Message de bienvenue automatique + menu rapide (commander / suivi / horaires)',
-      'Statuts quotidiens : dispo du jour, zones de livraison, ruptures',
-      'Confirmation de commande automatisée dès réception',
-    ],
-    cta: "Numéro WhatsApp Business unique, relayé partout (bio IG/TikTok, posts FB, tournées).",
-  },
-  {
-    channel: 'instagram',
-    icon: Instagram,
-    iconColor: 'text-pink-600',
-    objective: "Image de marque et acquisition de nouveaux clients hors zone historique (visuel, aspirationnel).",
-    audience: "Jeunes urbains, amateurs de pâtisserie artisanale, organisateurs d'événements (mariages, anniversaires).",
-    cadence: '3 posts/semaine + Stories quotidiennes + 1 Reel/semaine.',
-    contentPillars: [
-      'Reels courts : fabrication, emballage, livraison (format vertical, musique tendance)',
-      'Carrousels « types de pots / formats » avec prix',
-      'Stories interactives (sondages « quel parfum demain ? »)',
-      'Mise en avant des commandes mariage/événements réalisées',
-    ],
-    cta: "Lien en bio → WhatsApp direct + bouton contact Instagram relié au même numéro.",
-  },
-  {
-    channel: 'tiktok',
-    icon: Music2,
-    iconColor: 'text-gray-900',
-    objective: "Portée virale et nouvelle clientèle jeune : montrer le savoir-faire artisanal de façon divertissante.",
-    audience: "Audience large 18-35 ans, sensible aux formats courts et au storytelling « fait main / local ».",
-    cadence: '2 à 3 vidéos/semaine, formats bruts et authentiques (pas trop léchés).',
-    contentPillars: [
-      'Journée type d’un pétrisseur / d’un commercial en tournée',
-      'ASMR fabrication (pâte, cuisson, mise en pot)',
-      'Avant/après emballage, dégustations réaction client',
-      'Tendances/sons populaires détournés pour la marque',
-    ],
-    cta: "Lien bio TikTok → WhatsApp. TikTok Shop / formulaire de leads en option plus tard.",
-  },
-];
-
-export default function MarketingPage() {
+export default function MarketingPage({ onNavigate }: { onNavigate?: (page: string) => void }) {
   const { toast } = useToast();
   const { profile } = useAuth();
   const { fetchWithCache, isOffline } = useOfflineFetch();
   const [platform, setPlatform] = useState<Platform>('overview');
-  const [campaignChannel, setCampaignChannel] = useState<MarketingChannel>('facebook');
   const [orders, setOrders] = useState<MarketingOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'all' | MarketingOrderStatus>('all');
@@ -161,16 +78,6 @@ export default function MarketingPage() {
   const [orderReplyDrafts, setOrderReplyDrafts] = useState<Record<string, string>>({});
   const [orderReplyBusy, setOrderReplyBusy] = useState<string | null>(null);
   const [openReplyFor, setOpenReplyFor] = useState<string | null>(null);
-
-  const [autoReplySettings, setAutoReplySettings] = useState<AutoReplySetting[]>([]);
-  const [autoReplyLoading, setAutoReplyLoading] = useState(true);
-  const [autoReplyDrafts, setAutoReplyDrafts] = useState<Record<string, string>>({});
-  const [autoReplySaving, setAutoReplySaving] = useState<string | null>(null);
-
-  const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
-  const [broadcastsLoading, setBroadcastsLoading] = useState(true);
-  const [broadcastMessage, setBroadcastMessage] = useState('');
-  const [broadcastSending, setBroadcastSending] = useState(false);
 
   const [fbStories, setFbStories] = useState<FacebookStory[]>([]);
   const [fbStoriesLoading, setFbStoriesLoading] = useState(true);
@@ -327,88 +234,6 @@ export default function MarketingPage() {
     setOrderReplyDrafts((prev) => ({ ...prev, [order.id]: '' }));
     setOpenReplyFor(null);
     loadOrders();
-  };
-
-  const loadAutoReplySettings = useCallback(async () => {
-    setAutoReplyLoading(true);
-    const { data, error } = await supabase.from('auto_reply_settings').select('*');
-    if (!error && data) {
-      const rows = data as AutoReplySetting[];
-      setAutoReplySettings(rows);
-      setAutoReplyDrafts((prev) => {
-        const next = { ...prev };
-        for (const r of rows) if (next[r.channel] === undefined) next[r.channel] = r.message;
-        return next;
-      });
-    }
-    setAutoReplyLoading(false);
-  }, []);
-
-  useEffect(() => { loadAutoReplySettings(); }, [loadAutoReplySettings]);
-  useRealtimeSubscription('marketing-page-auto-reply', isOffline ? [] : ['auto_reply_settings'], loadAutoReplySettings);
-
-  const toggleAutoReply = async (channel: AutoReplyChannel, enabled: boolean) => {
-    setAutoReplySettings((prev) => prev.map((s) => (s.channel === channel ? { ...s, enabled } : s)));
-    const { error } = await supabase.from('auto_reply_settings').update({ enabled }).eq('channel', channel);
-    if (error) {
-      toast('Impossible de mettre à jour le bot.', 'error');
-      loadAutoReplySettings();
-    }
-  };
-
-  const saveAutoReplyMessage = async (channel: AutoReplyChannel) => {
-    const message = (autoReplyDrafts[channel] ?? '').trim();
-    if (!message) {
-      toast('Le message ne peut pas être vide.', 'error');
-      return;
-    }
-    setAutoReplySaving(channel);
-    const { error } = await supabase.from('auto_reply_settings').update({ message }).eq('channel', channel);
-    setAutoReplySaving(null);
-    if (error) {
-      toast('Impossible d\'enregistrer le message.', 'error');
-      return;
-    }
-    toast('Message du bot enregistré.', 'success');
-  };
-
-  const loadBroadcasts = useCallback(async () => {
-    setBroadcastsLoading(true);
-    const { data, error } = await supabase
-      .from('broadcasts')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(60);
-    if (!error) setBroadcasts((data as Broadcast[]) ?? []);
-    setBroadcastsLoading(false);
-  }, []);
-
-  useEffect(() => { loadBroadcasts(); }, [loadBroadcasts]);
-  useRealtimeSubscription('marketing-page-broadcasts', isOffline ? [] : ['broadcasts'], loadBroadcasts);
-
-  const sendBroadcast = async (event: React.FormEvent, channel: BroadcastChannelFilter) => {
-    event.preventDefault();
-    if (!broadcastMessage.trim()) {
-      toast('Le message est obligatoire.', 'error');
-      return;
-    }
-    if (!window.confirm(`Envoyer ce message à tous les clients ${BROADCAST_CHANNEL_LABELS[channel]} connus ? Cette action est irréversible.`)) return;
-    setBroadcastSending(true);
-    const { data: sessionData } = await supabase.auth.getSession();
-    const { data, error } = await supabase.functions.invoke('broadcast-message', {
-      body: { message: broadcastMessage.trim(), channel },
-      headers: sessionData.session ? { Authorization: `Bearer ${sessionData.session.access_token}` } : undefined,
-    });
-    setBroadcastSending(false);
-    if (error || (data as { error?: string } | null)?.error) {
-      toast((data as { error?: string } | null)?.error ?? "Échec de la diffusion.", 'error');
-      loadBroadcasts();
-      return;
-    }
-    const result = data as { sent: number; failed: number; total: number };
-    toast(`Diffusion envoyée : ${result.sent}/${result.total} réussis.`, result.failed > 0 ? 'error' : 'success');
-    setBroadcastMessage('');
-    loadBroadcasts();
   };
 
   const publishToFacebook = async (event: React.FormEvent) => {
@@ -619,169 +444,12 @@ export default function MarketingPage() {
 
   // --- Blocs réutilisables, communs à plusieurs plateformes ---
 
-  const renderStrategyCard = (channel: MarketingChannel) => {
-    const s = STRATEGIES.find((st) => st.channel === channel);
-    if (!s) return null;
-    const Icon = s.icon;
-    return (
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
-        <div className="flex items-center gap-3">
-          <div className={`w-11 h-11 rounded-xl bg-gray-50 flex items-center justify-center shrink-0 ${s.iconColor}`}>
-            <Icon className="w-6 h-6" />
-          </div>
-          <h3 className="font-bold text-gray-900 text-lg">Stratégie {MARKETING_CHANNEL_LABELS[s.channel]}</h3>
-        </div>
-        <div className="flex items-start gap-2 text-sm">
-          <Target className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
-          <p className="text-gray-700"><span className="font-medium">Objectif : </span>{s.objective}</p>
-        </div>
-        <div className="flex items-start gap-2 text-sm">
-          <Users className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
-          <p className="text-gray-700"><span className="font-medium">Audience : </span>{s.audience}</p>
-        </div>
-        <div className="flex items-start gap-2 text-sm">
-          <Calendar className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
-          <p className="text-gray-700"><span className="font-medium">Cadence : </span>{s.cadence}</p>
-        </div>
-        <div className="flex items-start gap-2 text-sm">
-          <Lightbulb className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
-          <div className="text-gray-700">
-            <span className="font-medium">Contenus clés :</span>
-            <ul className="list-disc list-inside mt-1 space-y-0.5 text-gray-600">
-              {s.contentPillars.map((c) => <li key={c}>{c}</li>)}
-            </ul>
-          </div>
-        </div>
-        <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 text-sm text-amber-800">
-          <span className="font-medium">Passage à l'action : </span>{s.cta}
-        </div>
-      </div>
-    );
-  };
-
-  const renderAutoReplyCard = (channel: AutoReplyChannel) => {
-    const setting = autoReplySettings.find((s) => s.channel === channel);
-    return (
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold text-gray-900 flex items-center gap-2"><Bot className="w-5 h-5 text-violet-600" /> Bot de réponse automatique</h3>
-          <button
-            onClick={() => toggleAutoReply(channel, !(setting?.enabled))}
-            className={`relative w-10 rounded-full transition-colors ${setting?.enabled ? 'bg-emerald-500' : 'bg-gray-200'}`}
-            style={{ height: '22px' }}
-          >
-            <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${setting?.enabled ? 'translate-x-4' : ''}`} />
-          </button>
-        </div>
-        <p className="text-sm text-gray-600">Envoie automatiquement ce message au tout premier contact d'un client (une seule fois, pas à chaque message).</p>
-        {autoReplyLoading ? (
-          <div className="text-sm text-gray-400">Chargement…</div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <input
-              value={autoReplyDrafts[channel] ?? ''}
-              onChange={(e) => setAutoReplyDrafts((prev) => ({ ...prev, [channel]: e.target.value }))}
-              className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-violet-500"
-            />
-            <button
-              onClick={() => saveAutoReplyMessage(channel)}
-              disabled={autoReplySaving === channel}
-              className="shrink-0 p-2 rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-100 transition-colors disabled:opacity-50"
-              title="Enregistrer"
-            >
-              {autoReplySaving === channel ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderDiffusionCard = (channel: BroadcastChannelFilter) => {
-    const history = broadcasts.filter((b) => b.channel === channel).slice(0, 5);
-    return (
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
-        <h3 className="font-bold text-gray-900 flex items-center gap-2"><Radio className="w-5 h-5 text-orange-600" /> Diffusion groupée {BROADCAST_CHANNEL_LABELS[channel]}</h3>
-        <p className="text-sm text-gray-600">Envoie un même message à tous les clients {BROADCAST_CHANNEL_LABELS[channel]} qui nous ont déjà contactés.</p>
-        <form onSubmit={(e) => sendBroadcast(e, channel)} className="space-y-3">
-          <textarea
-            value={broadcastMessage}
-            onChange={(e) => setBroadcastMessage(e.target.value)}
-            placeholder="Ex : Promo du jour : -10% sur les madeleines aujourd'hui uniquement !"
-            rows={3}
-            className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-orange-500"
-          />
-          <button
-            type="submit"
-            disabled={broadcastSending}
-            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 text-white text-sm font-medium shadow-sm hover:shadow-md transition-all disabled:opacity-50"
-          >
-            {broadcastSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radio className="w-4 h-4" />}
-            {broadcastSending ? 'Envoi en cours…' : 'Diffuser'}
-          </button>
-        </form>
-        {!broadcastsLoading && history.length > 0 && (
-          <div className="border-t border-gray-100 pt-3 space-y-2">
-            {history.map((b) => (
-              <div key={b.id} className="flex items-center justify-between text-sm">
-                <div className="min-w-0 flex-1">
-                  <p className="text-gray-800 truncate">{b.message}</p>
-                  <p className="text-xs text-gray-400">{new Date(b.created_at).toLocaleString('fr-FR')}</p>
-                </div>
-                <span className={`shrink-0 ml-3 text-xs px-2 py-0.5 rounded-full font-medium ${
-                  b.status === 'termine' ? 'bg-emerald-50 text-emerald-700' : b.status === 'echec' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
-                }`}>
-                  {b.recipients_sent}/{b.recipients_total} envoyés
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   const renderStatusNote = (icon: typeof Clock, color: string, bg: string, text: string) => {
     const Icon = icon;
     return (
       <div className={`rounded-2xl border p-4 flex items-start gap-2.5 text-sm ${bg} ${color}`}>
         <Icon className="w-4 h-4 shrink-0 mt-0.5" />
         <span>{text}</span>
-      </div>
-    );
-  };
-
-  // Regroupe, par canal, la stratégie ainsi que tout ce qu'il faut pour
-  // préparer une campagne et la diffuser (bot d'auto-réponse + diffusion
-  // groupée). Les pages Facebook/WhatsApp/Instagram/TikTok redeviennent de
-  // simples fils de discussion, comme dans les applications natives.
-  const renderCampaignPrepSection = () => {
-    const hasAutoReply = campaignChannel === 'facebook' || campaignChannel === 'whatsapp' || campaignChannel === 'instagram';
-    const hasBroadcast = campaignChannel === 'facebook' || campaignChannel === 'whatsapp' || campaignChannel === 'instagram';
-    return (
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
-        <h3 className="font-bold text-gray-900 flex items-center gap-2"><Target className="w-5 h-5 text-amber-600" /> Préparation de campagne</h3>
-        <p className="text-sm text-gray-600">Toutes les stratégies par réseau, ainsi que le bot de bienvenue et la diffusion groupée pour préparer puis lancer une campagne.</p>
-        <div className="flex items-center gap-2 flex-wrap">
-          {PLATFORMS.filter((p) => p.id !== 'overview').map(({ id, label, icon: Icon, iconColor }) => (
-            <button
-              key={id}
-              onClick={() => setCampaignChannel(id as MarketingChannel)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                campaignChannel === id ? 'bg-amber-500 text-white shadow-sm' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <Icon className={`w-3.5 h-3.5 ${campaignChannel === id ? '' : iconColor}`} />
-              {label}
-            </button>
-          ))}
-        </div>
-        {renderStrategyCard(campaignChannel)}
-        {hasAutoReply && renderAutoReplyCard(campaignChannel as AutoReplyChannel)}
-        {hasBroadcast && renderDiffusionCard(campaignChannel as BroadcastChannelFilter)}
-        {!hasAutoReply && !hasBroadcast && (
-          <p className="text-xs text-gray-400">Le bot et la diffusion groupée arriveront ici dès qu'une intégration technique existera pour TikTok.</p>
-        )}
       </div>
     );
   };
@@ -831,7 +499,19 @@ export default function MarketingPage() {
             })}
           </div>
 
-          {renderCampaignPrepSection()}
+          <button
+            onClick={() => onNavigate?.('campaign-prep')}
+            className="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-5 flex items-center gap-4 hover:shadow-md transition-shadow text-left"
+          >
+            <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
+              <Target className="w-6 h-6 text-amber-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-bold text-gray-900">Préparation de campagne</h3>
+              <p className="text-sm text-gray-500">Stratégies par réseau, bot de bienvenue et diffusion groupée</p>
+            </div>
+            <ArrowRight className="w-5 h-5 text-gray-400" />
+          </button>
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
             <h3 className="font-bold text-gray-900 flex items-center gap-2"><BellRing className="w-5 h-5 text-amber-600" /> Alertes paiement</h3>
@@ -1217,7 +897,7 @@ export default function MarketingPage() {
           </div>
 
           <p className="text-sm text-gray-500">
-            📋 Commandes reçues, 📣 bot de bienvenue et diffusion groupée : onglet <span className="font-medium text-gray-900">Vue d'ensemble</span> (Préparation de campagne + Toutes les commandes, filtrables par canal).
+            📋 Commandes reçues : onglet <span className="font-medium text-gray-900">Vue d'ensemble</span> → Toutes les commandes (filtrables par canal). 📣 Bot de bienvenue et diffusion groupée : page <span className="font-medium text-gray-900">Préparation de campagne</span>.
           </p>
         </div>
       )}
@@ -1230,7 +910,7 @@ export default function MarketingPage() {
               💰 La relance des points de vente en impayé (WhatsApp) se trouve sur la page <span className="font-medium text-gray-900">Créances</span>, bouton « Relancer les impayés ».
             </p>
             <p className="text-sm text-gray-500 mt-2">
-              📋 Commandes reçues, 📣 bot de bienvenue et diffusion groupée : onglet <span className="font-medium text-gray-900">Vue d'ensemble</span> (Préparation de campagne + Toutes les commandes, filtrables par canal).
+              📋 Commandes reçues : onglet <span className="font-medium text-gray-900">Vue d'ensemble</span> → Toutes les commandes (filtrables par canal). 📣 Bot de bienvenue et diffusion groupée : page <span className="font-medium text-gray-900">Préparation de campagne</span>.
             </p>
           </div>
         </div>
@@ -1240,7 +920,7 @@ export default function MarketingPage() {
         <div className="space-y-4">
           {renderStatusNote(Clock, 'text-amber-800', 'bg-amber-50 border-amber-100', "Pas encore connecté : il faut d'abord créer/lier un compte Instagram professionnel à la Page Facebook avant que les messages et le bot ne fonctionnent ici.")}
           <p className="text-sm text-gray-500">
-            📋 Commandes reçues, 📣 bot de bienvenue et diffusion groupée : onglet <span className="font-medium text-gray-900">Vue d'ensemble</span> (Préparation de campagne + Toutes les commandes, filtrables par canal).
+            📋 Commandes reçues : onglet <span className="font-medium text-gray-900">Vue d'ensemble</span> → Toutes les commandes (filtrables par canal). 📣 Bot de bienvenue et diffusion groupée : page <span className="font-medium text-gray-900">Préparation de campagne</span>.
           </p>
         </div>
       )}

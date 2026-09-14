@@ -44,6 +44,7 @@ const NotificationArchivePage = lazy(() => import('@/pages/NotificationArchivePa
 const AnalyticsPage = lazy(() => import('@/pages/AnalyticsPage'));
 const OpportunisticSalesPage = lazy(() => import('@/pages/OpportunisticSalesPage'));
 const MarketingPage = lazy(() => import('@/pages/MarketingPage'));
+const CampaignPrepPage = lazy(() => import('@/pages/CampaignPrepPage'));
 const DocumentsPage = lazy(() => import('@/pages/DocumentsPage'));
 const KioskCheckIn = lazy(() => import('@/pages/KioskCheckIn'));
 
@@ -135,6 +136,7 @@ function OfficeApp() {
     analytics: <AnalyticsPage onNavigate={navFromPage} />,
     opportunistic: <OpportunisticSalesPage />,
     marketing: <MarketingPage />,
+    'campaign-prep': <CampaignPrepPage />,
     documents: <DocumentsPage onNavigate={navFromPage} />,
   };
 

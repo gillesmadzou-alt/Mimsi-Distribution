@@ -10,7 +10,7 @@ import {
   Activity, Sparkles, Megaphone,
   Bell, Map, Network, Barcode, UserCog, Menu, X, WifiOff, Wifi, CloudOff,
   ClipboardList, Receipt, UserCheck, DownloadCloud, DatabaseBackup, Loader2, CheckCircle2, PiggyBank,
-  Camera, KeyRound, FolderOpen,
+  Camera, KeyRound, FolderOpen, Target,
 } from 'lucide-react';
 import NotificationBell from '@/components/NotificationBell';
 import InstallBanner from '@/components/InstallBanner';
@@ -29,7 +29,7 @@ export type PageId =
   | 'consignments' | 'restock' | 'leave'
   | 'leaderboard' | 'audit' | 'production' | 'map' | 'org-chart'
   | 'barcodes' | 'users' | 'approvals' | 'scheduling' | 'ingredients' | 'reports'
-  | 'observations' | 'expenses' | 'attendance' | 'notification-archive' | 'marketing' | 'documents';
+  | 'observations' | 'expenses' | 'attendance' | 'notification-archive' | 'marketing' | 'campaign-prep' | 'documents';
 
 interface NavSection {
   label: string;
@@ -109,7 +109,8 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Marketing',
     items: [
-      { id: 'marketing', label: 'Marketing & réseaux sociaux', description: 'Stratégie Facebook/WhatsApp/Instagram/TikTok et commandes reçues via automatisation', icon: Megaphone, minRole: 4 },
+      { id: 'marketing', label: 'Gestion des réseaux sociaux', description: 'Facebook/WhatsApp/Instagram/TikTok : commandes, discussions et publications', icon: Megaphone, minRole: 4 },
+      { id: 'campaign-prep', label: 'Préparation de campagne', description: 'Stratégies par réseau, bot de bienvenue et diffusion groupée', icon: Target, minRole: 4 },
     ],
   },
   {
