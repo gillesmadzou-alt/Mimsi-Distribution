@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { NO_ORG_ERROR, callerOrgId, getConnection, notConnectedError } from "../_shared/tenant.ts";
 
 // Publie une Story photo sur la Page Facebook Mimsi Distribution.
 // Appelée depuis l'onglet Marketing > Publier > Story. Même pattern d'auth
@@ -88,6 +89,14 @@ Deno.serve(async (req: Request) => {
     if (profileErr || !callerProfile || callerProfile.access_level < 4) {
       return jsonResponse(req, { error: "Accès refusé — réservé à l'équipe marketing/direction." }, 403);
     }
+    // L'organisation de l'appelant. Tout ce qui suit -- lecture du jeton comme
+    // ecriture en service_role -- est filtre dessus : ce client contourne la
+    // RLS, c'est donc ici que se joue le cloisonnement.
+    const orgId = await callerOrgId(callerClient, user.id);
+    if (!orgId) {
+      return jsonResponse(req, { error: NO_ORG_ERROR }, 403);
+    }
+
 
     const { image_base64, mime_type } = await req.json();
     if (!image_base64 || typeof image_base64 !== "string") {
@@ -95,20 +104,23 @@ Deno.serve(async (req: Request) => {
     }
     const contentType = typeof mime_type === "string" && mime_type.startsWith("image/") ? mime_type : "image/jpeg";
 
-    const pageId = Deno.env.get("FACEBOOK_PAGE_ID");
-    const pageToken = Deno.env.get("FACEBOOK_PAGE_ACCESS_TOKEN");
-    if (!pageId || !pageToken) {
-      return jsonResponse(req, { error: "FACEBOOK_PAGE_ID / FACEBOOK_PAGE_ACCESS_TOKEN non configurés côté Supabase." }, 500);
-    }
-
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // Le jeton et l'identifiant de Page viennent de la connexion Facebook de
+    // l'organisation, plus des variables d'environnement du déploiement.
+    const conn = await getConnection(serviceClient, orgId, "facebook");
+    if (!conn || !conn.externalId) {
+      return jsonResponse(req, { error: notConnectedError("facebook") }, 400);
+    }
+    const pageId = conn.externalId;
+    const pageToken = conn.accessToken;
+
     const { data: storyRow, error: insertError } = await serviceClient
       .from("facebook_stories")
-      .insert({ created_by: user.id })
+      .insert({ org_id: orgId, created_by: user.id })
       .select()
       .single();
     if (insertError) {

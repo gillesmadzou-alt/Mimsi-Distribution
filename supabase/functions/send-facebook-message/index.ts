@@ -1,5 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { sendChannelMessage } from "../_shared/messaging.ts";
+import { callerOrgId, getConnection, NO_ORG_ERROR, notConnectedError, serviceClient } from "../_shared/tenant.ts";
 
 // Envoie une réponse à un client qui a écrit sur Messenger (Page Facebook).
 // Appelée depuis l'onglet Marketing > Commandes reçues, bouton "Répondre"
@@ -9,6 +11,12 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 // Instagram Direct utilise la même API Send (même endpoint /me/messages)
 // mais nécessite un compte Instagram professionnel lié — pas encore
 // configuré (voir statut du projet), donc non couvert ici pour l'instant.
+//
+// Multi-locataire : le jeton n'est plus lu dans l'environnement mais dans la
+// connexion Facebook de l'organisation de l'appelant. La mise à jour de la
+// commande est elle aussi filtrée sur cette organisation — sans ce filtre, le
+// client service_role contournerait la RLS et un appelant pourrait modifier la
+// commande d'un autre client en devinant son identifiant.
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "https://mimsi-distribution-ennx.vercel.app",
@@ -75,6 +83,11 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(req, { error: "Accès refusé — réservé à l'équipe marketing/direction." }, 403);
     }
 
+    const orgId = await callerOrgId(callerClient, user.id);
+    if (!orgId) {
+      return jsonResponse(req, { error: NO_ORG_ERROR }, 403);
+    }
+
     const { recipient_id, message, order_id } = await req.json();
     if (!recipient_id || typeof recipient_id !== "string") {
       return jsonResponse(req, { error: "recipient_id est obligatoire." }, 400);
@@ -83,36 +96,33 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(req, { error: "message est obligatoire." }, 400);
     }
 
-    const pageToken = Deno.env.get("FACEBOOK_PAGE_ACCESS_TOKEN");
-    if (!pageToken) {
-      return jsonResponse(req, { error: "FACEBOOK_PAGE_ACCESS_TOKEN non configuré côté Supabase." }, 500);
+    const admin = serviceClient();
+
+    const conn = await getConnection(admin, orgId, "facebook");
+    if (!conn) {
+      return jsonResponse(req, { error: notConnectedError("facebook") }, 400);
     }
 
-    const graphRes = await fetch(`https://graph.facebook.com/v21.0/me/messages?access_token=${encodeURIComponent(pageToken)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messaging_type: "RESPONSE",
-        recipient: { id: recipient_id },
-        message: { text: message.trim() },
-      }),
-    });
-    const graphData = await graphRes.json().catch(() => ({}));
-
-    if (!graphRes.ok) {
-      const errorMessage = (graphData as { error?: { message?: string } })?.error?.message ?? "Erreur inconnue de l'API Facebook.";
-      return jsonResponse(req, { error: `Facebook a refusé l'envoi : ${errorMessage}` }, 502);
+    const result = await sendChannelMessage(conn, recipient_id, message.trim());
+    if (!result.ok) {
+      return jsonResponse(req, { error: `Facebook a refusé l'envoi : ${result.error}` }, 502);
     }
 
     if (order_id && typeof order_id === "string") {
-      const serviceClient = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      );
-      await serviceClient.from("marketing_orders").update({ status: "en_cours" }).eq("id", order_id);
+      await admin
+        .from("marketing_orders")
+        .update({ status: "en_cours" })
+        .eq("id", order_id)
+        .eq("org_id", orgId);
     }
 
-    return jsonResponse(req, { success: true, message_id: (graphData as { message_id?: string })?.message_id ?? null }, 200);
+    await admin
+      .from("social_connections")
+      .update({ last_used_at: new Date().toISOString() })
+      .eq("org_id", orgId)
+      .eq("platform", "facebook");
+
+    return jsonResponse(req, { success: true, message_id: result.externalId }, 200);
   } catch (err) {
     console.error("send-facebook-message unexpected error:", err);
     return jsonResponse(req, { error: "Erreur serveur lors de l'envoi." }, 500);

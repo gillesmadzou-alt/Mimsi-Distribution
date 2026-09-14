@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { sendChannelMessage } from "../_shared/messaging.ts";
+import { getConnection, resolveOrgByExternalId, serviceClient } from "../_shared/tenant.ts";
 
 // Remplace le webhook n8n : reçoit DIRECTEMENT les évènements Meta (WhatsApp
 // Business, Messenger, Instagram, commentaires sur la Page) et les
@@ -11,6 +12,15 @@ import { sendChannelMessage } from "../_shared/messaging.ts";
 //
 // Config requise (Supabase secrets) :
 //   supabase secrets set META_VERIFY_TOKEN=<le même token que dans Meta>
+//
+// Multi-locataire : un seul webhook sert tous les clients. Meta identifie
+// l'émetteur par `entry.id` (Page ID pour Messenger et les commentaires, IG
+// User ID pour Instagram) ou par `value.metadata.phone_number_id` pour
+// WhatsApp. C'est cet identifiant, et lui seul, qui détermine à quelle
+// organisation livrer l'évènement — via l'index unique
+// (platform, external_id) de `social_connections`. Un évènement dont
+// l'identifiant est inconnu est ignoré : mieux vaut perdre un message que
+// l'écrire chez le mauvais client.
 //
 // GET  : poignée de main de vérification Meta (répond hub.challenge).
 // POST : évènements entrants — messages (marketing_orders) et commentaires
@@ -39,6 +49,8 @@ function jsonResponse(body: Record<string, unknown>, status: number) {
 
 type NormalizedMessage = {
   channel: "whatsapp" | "facebook" | "instagram";
+  /** Identifiant du compte destinataire chez Meta : sert à router vers l'organisation. */
+  accountId: string | null;
   customerName: string | null;
   customerPhone: string | null;
   message: string | null;
@@ -47,6 +59,8 @@ type NormalizedMessage = {
 };
 
 type NormalizedComment = {
+  /** Page ID : sert à router le commentaire vers la bonne organisation. */
+  accountId: string | null;
   postId: string | null;
   commentId: string;
   parentCommentId: string | null;
@@ -89,6 +103,11 @@ function normalizeEntries(body: Record<string, unknown>): NormalizedMessage[] {
         const value = (change.value as Record<string, unknown>) ?? {};
         const messages = (value.messages as Record<string, unknown>[] | undefined) ?? [];
         const contacts = (value.contacts as Record<string, unknown>[] | undefined) ?? [];
+        // Le Phone Number ID identifie le numéro WhatsApp destinataire, donc
+        // le locataire. `entry.id` est le WABA, qui peut porter plusieurs
+        // numéros : c'est bien le phone_number_id qu'il faut.
+        const phoneNumberId =
+          (value.metadata as { phone_number_id?: string } | undefined)?.phone_number_id ?? null;
         for (const msg of messages) {
           const from = msg.from as string | undefined;
           const contact = contacts.find(
@@ -97,6 +116,7 @@ function normalizeEntries(body: Record<string, unknown>): NormalizedMessage[] {
           const profile = contact?.profile as { name?: string } | undefined;
           results.push({
             channel: "whatsapp",
+            accountId: phoneNumberId,
             customerName: profile?.name ?? null,
             customerPhone: from ?? null,
             message: extractWhatsappText(msg),
@@ -115,6 +135,7 @@ function normalizeEntries(body: Record<string, unknown>): NormalizedMessage[] {
   if (object === "page" || object === "instagram") {
     const channel: "facebook" | "instagram" = object === "page" ? "facebook" : "instagram";
     for (const entry of entries) {
+      const accountId = (entry.id as string | undefined) ?? null;
       const messaging = (entry.messaging as Record<string, unknown>[] | undefined) ?? [];
       for (const event of messaging) {
         const message = event.message as Record<string, unknown> | undefined;
@@ -122,6 +143,7 @@ function normalizeEntries(body: Record<string, unknown>): NormalizedMessage[] {
         const sender = event.sender as { id?: string } | undefined;
         results.push({
           channel,
+          accountId,
           customerName: null, // nécessiterait un appel Graph API supplémentaire (profil PSID/IGSID)
           customerPhone: sender?.id ?? null, // PSID/IGSID, pas un numéro — sert d'identifiant pour répondre
           message: (message.text as string | undefined) ?? null,
@@ -146,6 +168,7 @@ function normalizeCommentEntries(body: Record<string, unknown>): NormalizedComme
   const results: NormalizedComment[] = [];
 
   for (const entry of entries) {
+    const accountId = (entry.id as string | undefined) ?? null;
     const changes = (entry.changes as Record<string, unknown>[] | undefined) ?? [];
     for (const change of changes) {
       if (change.field !== "feed") continue;
@@ -155,6 +178,7 @@ function normalizeCommentEntries(body: Record<string, unknown>): NormalizedComme
       const commentId = value.comment_id as string | undefined;
       if (!commentId) continue;
       results.push({
+        accountId,
         postId: (value.post_id as string | undefined) ?? null,
         commentId,
         parentCommentId: (value.parent_id as string | undefined) ?? null,
@@ -175,26 +199,37 @@ function normalizeCommentEntries(body: Record<string, unknown>): NormalizedComme
 // mais seulement si c'est la toute première fois qu'on entend parler de ce
 // client sur ce canal — évite de spammer une conversation déjà en cours.
 async function maybeSendAutoReply(
-  serviceClient: ReturnType<typeof createClient>,
+  client: SupabaseClient,
+  orgId: string,
   channel: "whatsapp" | "facebook" | "instagram",
   customerPhone: string,
 ) {
   try {
-    const { count } = await serviceClient
+    // L'historique et les réglages sont ceux de CETTE organisation : sans le
+    // filtre org_id, un client bavard ferait taire le bot d'un autre.
+    const { count } = await client
       .from("marketing_orders")
       .select("id", { count: "exact", head: true })
+      .eq("org_id", orgId)
       .eq("channel", channel)
       .eq("customer_phone", customerPhone);
     if ((count ?? 0) > 1) return; // déjà un historique avec ce client sur ce canal
 
-    const { data: settings } = await serviceClient
+    const { data: settings } = await client
       .from("auto_reply_settings")
       .select("enabled, message")
+      .eq("org_id", orgId)
       .eq("channel", channel)
       .maybeSingle();
     if (!settings?.enabled || !settings.message) return;
 
-    const result = await sendChannelMessage(channel, customerPhone, settings.message);
+    const conn = await getConnection(client, orgId, channel);
+    if (!conn) {
+      console.error(`meta-webhook auto-reply (${channel}) : aucune connexion active pour l'organisation ${orgId}.`);
+      return;
+    }
+
+    const result = await sendChannelMessage(conn, customerPhone, settings.message);
     if (!result.ok) console.error(`meta-webhook auto-reply (${channel}) error:`, result.error);
   } catch (err) {
     console.error("meta-webhook auto-reply unexpected error:", err);
@@ -247,17 +282,25 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ received: true, processed: 0 }, 200);
   }
 
-  const serviceClient = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
+  const client = serviceClient();
 
   let inserted = 0;
+  let ignored = 0;
   for (const msg of normalized) {
-    const { data: insertedRow, error } = await serviceClient
+    // Routage : de l'identifiant Meta vers l'organisation. Un identifiant
+    // inconnu signifie un compte non enregistré — on ignore plutôt que
+    // d'écrire chez un client au hasard.
+    const orgId = await resolveOrgByExternalId(client, msg.channel, msg.accountId);
+    if (!orgId) {
+      ignored++;
+      continue;
+    }
+
+    const { data: insertedRow, error } = await client
       .from("marketing_orders")
       .upsert(
         {
+          org_id: orgId,
           channel: msg.channel,
           customer_name: msg.customerName,
           customer_phone: msg.customerPhone,
@@ -279,15 +322,22 @@ Deno.serve(async (req: Request) => {
     // Bot de réponse automatique : envoyé une seule fois, au tout premier
     // message d'un client sur ce canal (pas à chaque message).
     if (insertedRow && msg.customerPhone) {
-      await maybeSendAutoReply(serviceClient, msg.channel, msg.customerPhone);
+      await maybeSendAutoReply(client, orgId, msg.channel, msg.customerPhone);
     }
   }
 
   for (const c of normalizedComments) {
-    const { error } = await serviceClient
+    const orgId = await resolveOrgByExternalId(client, "facebook", c.accountId);
+    if (!orgId) {
+      ignored++;
+      continue;
+    }
+
+    const { error } = await client
       .from("facebook_comments")
       .upsert(
         {
+          org_id: orgId,
           post_id: c.postId,
           comment_id: c.commentId,
           parent_comment_id: c.parentCommentId,
@@ -309,5 +359,5 @@ Deno.serve(async (req: Request) => {
 
   // Toujours 200, même en cas d'erreurs partielles : Meta ne doit pas
   // réessayer indéfiniment un évènement déjà (au moins partiellement) traité.
-  return jsonResponse({ received: true, processed: inserted }, 200);
+  return jsonResponse({ received: true, processed: inserted, ignored }, 200);
 });

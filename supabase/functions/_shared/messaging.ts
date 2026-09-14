@@ -1,72 +1,68 @@
-// Module partagé : envoi de messages sortants, quel que soit le canal.
-// Utilisé par send-facebook-message, meta-webhook (bot auto-réponse),
-// broadcast-message et send-payment-reminders — pour ne pas dupliquer la
+// Module partage : envoi de messages sortants, quel que soit le canal.
+// Utilise par send-facebook-message, meta-webhook (bot auto-reponse),
+// broadcast-message et send-payment-reminders -- pour ne pas dupliquer la
 // logique d'appel aux API Graph (Facebook/Instagram) et WhatsApp Cloud API.
+//
+// Multi-locataire : la fonction ne lit plus les jetons dans l'environnement.
+// Elle recoit une `Connection` deja resolue pour l'organisation concernee
+// (voir _shared/tenant.ts), ce qui rend impossible d'envoyer un message avec
+// le compte d'un autre client.
 
-export type OutboundChannel = "facebook" | "instagram" | "whatsapp";
+import type { Connection, Platform } from "./tenant.ts";
+
+export type OutboundChannel = Extract<Platform, "facebook" | "instagram" | "whatsapp">;
 
 export type SendResult = { ok: true; externalId: string | null } | { ok: false; error: string };
 
-// Messenger : API Send avec le token de Page (FACEBOOK_PAGE_ACCESS_TOKEN).
-async function sendViaFacebookPage(recipientId: string, text: string): Promise<SendResult> {
-  const pageToken = Deno.env.get("FACEBOOK_PAGE_ACCESS_TOKEN");
-  if (!pageToken) return { ok: false, error: "FACEBOOK_PAGE_ACCESS_TOKEN non configuré côté Supabase." };
+function apiError(data: unknown, fallback: string): string {
+  return (data as { error?: { message?: string } })?.error?.message ?? fallback;
+}
 
-  const res = await fetch(`https://graph.facebook.com/v21.0/me/messages?access_token=${encodeURIComponent(pageToken)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messaging_type: "RESPONSE",
-      recipient: { id: recipientId },
-      message: { text },
-    }),
-  });
+// Messenger : API Send avec le jeton de Page de l'organisation.
+async function sendViaFacebookPage(conn: Connection, recipientId: string, text: string): Promise<SendResult> {
+  const res = await fetch(
+    `https://graph.facebook.com/v21.0/me/messages?access_token=${encodeURIComponent(conn.accessToken)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messaging_type: "RESPONSE",
+        recipient: { id: recipientId },
+        message: { text },
+      }),
+    },
+  );
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    return { ok: false, error: (data as { error?: { message?: string } })?.error?.message ?? "Erreur inconnue de l'API Facebook." };
-  }
+  if (!res.ok) return { ok: false, error: apiError(data, "Erreur inconnue de l'API Facebook.") };
   return { ok: true, externalId: (data as { message_id?: string })?.message_id ?? null };
 }
 
-// Instagram Direct : compte Instagram connecté à l'app via « connexion
-// Instagram » directe (pas via une Page Facebook liée) — ça génère un token
-// propre à Instagram (INSTAGRAM_ACCESS_TOKEN, à récupérer dans Meta for
-// Developers → Mimsi Distribution → Cas d'utilisation → API Instagram →
-// section 2 « Générez des tokens d'accès »), différent du token de Page, et
-// l'appel Graph passe par graph.instagram.com plutôt que graph.facebook.com.
-async function sendViaInstagram(recipientId: string, text: string): Promise<SendResult> {
-  const igToken = Deno.env.get("INSTAGRAM_ACCESS_TOKEN");
-  if (!igToken) return { ok: false, error: "INSTAGRAM_ACCESS_TOKEN non configuré côté Supabase." };
-
-  const res = await fetch(`https://graph.instagram.com/v21.0/me/messages?access_token=${encodeURIComponent(igToken)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      recipient: { id: recipientId },
-      message: { text },
-    }),
-  });
+// Instagram Direct : compte Instagram connecte directement a l'app (pas via
+// une Page Facebook liee), ce qui donne un jeton propre a Instagram et un
+// appel via graph.instagram.com plutot que graph.facebook.com.
+async function sendViaInstagram(conn: Connection, recipientId: string, text: string): Promise<SendResult> {
+  const res = await fetch(
+    `https://graph.instagram.com/v21.0/me/messages?access_token=${encodeURIComponent(conn.accessToken)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipient: { id: recipientId }, message: { text } }),
+    },
+  );
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    return { ok: false, error: (data as { error?: { message?: string } })?.error?.message ?? "Erreur inconnue de l'API Instagram." };
-  }
+  if (!res.ok) return { ok: false, error: apiError(data, "Erreur inconnue de l'API Instagram.") };
   return { ok: true, externalId: (data as { message_id?: string })?.message_id ?? null };
 }
 
-// WhatsApp Cloud API : nécessite un numéro de téléphone enregistré (pas le
-// numéro de test) et son Phone Number ID + un token d'accès dédié. Tant que
-// ces secrets ne sont pas configurés, cette fonction renvoie une erreur
-// explicite plutôt que d'échouer silencieusement.
-async function sendViaWhatsapp(recipientWaId: string, text: string): Promise<SendResult> {
-  const token = Deno.env.get("WHATSAPP_ACCESS_TOKEN");
-  const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
-  if (!token || !phoneNumberId) {
-    return { ok: false, error: "WHATSAPP_ACCESS_TOKEN / WHATSAPP_PHONE_NUMBER_ID non configurés côté Supabase (numéro WhatsApp de production pas encore enregistré)." };
+// WhatsApp Cloud API : le Phone Number ID est l'identifiant externe de la
+// connexion -- c'est aussi lui qui sert a router les webhooks entrants.
+async function sendViaWhatsapp(conn: Connection, recipientWaId: string, text: string): Promise<SendResult> {
+  if (!conn.externalId) {
+    return { ok: false, error: "Numero WhatsApp incomplet : le Phone Number ID manque sur la connexion." };
   }
-
-  const res = await fetch(`https://graph.facebook.com/v21.0/${phoneNumberId}/messages`, {
+  const res = await fetch(`https://graph.facebook.com/v21.0/${conn.externalId}/messages`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${conn.accessToken}` },
     body: JSON.stringify({
       messaging_product: "whatsapp",
       to: recipientWaId,
@@ -75,20 +71,17 @@ async function sendViaWhatsapp(recipientWaId: string, text: string): Promise<Sen
     }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    return { ok: false, error: (data as { error?: { message?: string } })?.error?.message ?? "Erreur inconnue de l'API WhatsApp." };
-  }
-  const messageId = (data as { messages?: { id?: string }[] })?.messages?.[0]?.id ?? null;
-  return { ok: true, externalId: messageId };
+  if (!res.ok) return { ok: false, error: apiError(data, "Erreur inconnue de l'API WhatsApp.") };
+  return { ok: true, externalId: (data as { messages?: { id?: string }[] })?.messages?.[0]?.id ?? null };
 }
 
 export async function sendChannelMessage(
-  channel: OutboundChannel,
+  conn: Connection,
   recipientId: string,
   text: string,
 ): Promise<SendResult> {
-  if (channel === "whatsapp") return sendViaWhatsapp(recipientId, text);
-  if (channel === "facebook") return sendViaFacebookPage(recipientId, text);
-  if (channel === "instagram") return sendViaInstagram(recipientId, text);
-  return { ok: false, error: `Canal non pris en charge pour l'envoi : ${channel}` };
+  if (conn.platform === "whatsapp") return sendViaWhatsapp(conn, recipientId, text);
+  if (conn.platform === "facebook") return sendViaFacebookPage(conn, recipientId, text);
+  if (conn.platform === "instagram") return sendViaInstagram(conn, recipientId, text);
+  return { ok: false, error: `Canal non pris en charge pour l'envoi : ${conn.platform}` };
 }

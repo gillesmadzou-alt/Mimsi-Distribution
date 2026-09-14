@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { sendChannelMessage, OutboundChannel } from "../_shared/messaging.ts";
+import { callerOrgId, getConnection, NO_ORG_ERROR, notConnectedError, type Connection } from "../_shared/tenant.ts";
 
 // Diffusion groupée : envoie un même message à tous les clients connus
 // (distincts, par channel + customer_phone dans marketing_orders) d'un
@@ -82,6 +83,14 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(req, { error: "Accès refusé — réservé à l'équipe marketing/direction." }, 403);
     }
 
+    // Sans cette organisation, la requête ci-dessous remonterait les contacts
+    // de TOUS les locataires : la diffusion d'un client partirait chez les
+    // clients d'un autre. C'est le filtre le plus important de cette fonction.
+    const orgId = await callerOrgId(callerClient, user.id);
+    if (!orgId) {
+      return jsonResponse(req, { error: NO_ORG_ERROR }, 403);
+    }
+
     const { message, channel } = await req.json();
     if (!message || typeof message !== "string" || !message.trim()) {
       return jsonResponse(req, { error: "Le message est obligatoire." }, 400);
@@ -98,6 +107,7 @@ Deno.serve(async (req: Request) => {
     let query = serviceClient
       .from("marketing_orders")
       .select("channel, customer_phone")
+      .eq("org_id", orgId)
       .not("customer_phone", "is", null);
     if (channelFilter !== "all") query = query.eq("channel", channelFilter);
     else query = query.in("channel", ["whatsapp", "facebook", "instagram"]);
@@ -119,6 +129,7 @@ Deno.serve(async (req: Request) => {
     const { data: broadcastRow, error: insertError } = await serviceClient
       .from("broadcasts")
       .insert({
+        org_id: orgId,
         message: message.trim(),
         channel: channelFilter,
         recipients_total: recipients.length,
@@ -132,8 +143,25 @@ Deno.serve(async (req: Request) => {
 
     let sent = 0;
     let failed = 0;
+    // Cache des connexions : `null` mémorisé signifie « canal non connecté »,
+    // pour ne pas réinterroger la base à chaque destinataire.
+    const connections = new Map<OutboundChannel, Connection | null>();
+
     for (const r of recipients) {
-      const result = await sendChannelMessage(r.channel, r.recipientId, message.trim());
+      // Une connexion par canal, résolue une seule fois et réutilisée pour
+      // tous les destinataires de ce canal.
+      let conn = connections.get(r.channel);
+      if (conn === undefined) {
+        conn = await getConnection(serviceClient, orgId, r.channel);
+        connections.set(r.channel, conn);
+      }
+      if (!conn) {
+        failed++;
+        console.error(`broadcast-message: ${notConnectedError(r.channel)}`);
+        continue;
+      }
+
+      const result = await sendChannelMessage(conn, r.recipientId, message.trim());
       if (result.ok) sent++;
       else {
         failed++;

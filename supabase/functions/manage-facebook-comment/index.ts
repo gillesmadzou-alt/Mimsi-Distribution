@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { callerOrgId, getConnection, NO_ORG_ERROR, notConnectedError } from "../_shared/tenant.ts";
 
 // Modération des commentaires reçus sur la Page Facebook (table
 // facebook_comments, alimentée par meta-webhook). Appelée depuis l'onglet
@@ -81,6 +82,11 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(req, { error: "Accès refusé — réservé à l'équipe marketing/direction." }, 403);
     }
 
+    const orgId = await callerOrgId(callerClient, user.id);
+    if (!orgId) {
+      return jsonResponse(req, { error: NO_ORG_ERROR }, 403);
+    }
+
     const { action, comment_id, message } = await req.json();
     if (!VALID_ACTIONS.includes(action)) {
       return jsonResponse(req, { error: `action doit être l'une de : ${VALID_ACTIONS.join(", ")}` }, 400);
@@ -92,21 +98,33 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(req, { error: "message est obligatoire pour répondre." }, 400);
     }
 
-    const pageToken = Deno.env.get("FACEBOOK_PAGE_ACCESS_TOKEN");
-    if (!pageToken) {
-      return jsonResponse(req, { error: "FACEBOOK_PAGE_ACCESS_TOKEN non configuré côté Supabase." }, 500);
-    }
-
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // `comment_id` est fourni par l'appelant et sert ensuite directement
+    // d'identifiant Graph. On vérifie donc d'abord que ce commentaire
+    // appartient bien à l'organisation de l'appelant : sans ce contrôle, un
+    // client pourrait masquer, supprimer ou répondre aux commentaires de la
+    // Page d'un autre en devinant un identifiant — le client service_role
+    // contourne la RLS.
     const { data: commentRow } = await serviceClient
       .from("facebook_comments")
       .select("from_id")
       .eq("comment_id", comment_id)
+      .eq("org_id", orgId)
       .maybeSingle();
+
+    if (!commentRow) {
+      return jsonResponse(req, { error: "Commentaire introuvable pour votre organisation." }, 404);
+    }
+
+    const conn = await getConnection(serviceClient, orgId, "facebook");
+    if (!conn) {
+      return jsonResponse(req, { error: notConnectedError("facebook") }, 400);
+    }
+    const pageToken = conn.accessToken;
 
     let graphRes: Response;
     let newStatus: string | null = null;
@@ -132,10 +150,10 @@ Deno.serve(async (req: Request) => {
       newStatus = "supprime";
     } else {
       // block
-      const pageId = Deno.env.get("FACEBOOK_PAGE_ID");
+      const pageId = conn.externalId;
       const fromId = commentRow?.from_id;
       if (!pageId) {
-        return jsonResponse(req, { error: "FACEBOOK_PAGE_ID non configuré côté Supabase." }, 500);
+        return jsonResponse(req, { error: notConnectedError("facebook") }, 400);
       }
       if (!fromId) {
         return jsonResponse(req, { error: "Auteur du commentaire introuvable, impossible de bloquer." }, 400);
@@ -153,7 +171,11 @@ Deno.serve(async (req: Request) => {
     }
 
     if (newStatus) {
-      await serviceClient.from("facebook_comments").update({ status: newStatus }).eq("comment_id", comment_id);
+      await serviceClient
+        .from("facebook_comments")
+        .update({ status: newStatus })
+        .eq("comment_id", comment_id)
+        .eq("org_id", orgId);
     }
 
     return jsonResponse(req, { success: true }, 200);

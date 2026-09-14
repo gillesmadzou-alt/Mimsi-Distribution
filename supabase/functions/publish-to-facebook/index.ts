@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { NO_ORG_ERROR, callerOrgId, getConnection, notConnectedError } from "../_shared/tenant.ts";
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "https://mimsi-distribution-ennx.vercel.app",
@@ -72,6 +73,14 @@ Deno.serve(async (req: Request) => {
     if (profileErr || !callerProfile || callerProfile.access_level < 4) {
       return jsonResponse(req, { error: "Accès refusé — réservé à l'équipe marketing/direction." }, 403);
     }
+    // L'organisation de l'appelant. Tout ce qui suit -- lecture du jeton comme
+    // ecriture en service_role -- est filtre dessus : ce client contourne la
+    // RLS, c'est donc ici que se joue le cloisonnement.
+    const orgId = await callerOrgId(callerClient, user.id);
+    if (!orgId) {
+      return jsonResponse(req, { error: NO_ORG_ERROR }, 403);
+    }
+
 
     const { message, link } = await req.json();
     if (!message || typeof message !== "string" || !message.trim()) {
@@ -85,24 +94,24 @@ Deno.serve(async (req: Request) => {
 
     const { data: postRow, error: insertError } = await serviceClient
       .from("facebook_posts")
-      .insert({ message: message.trim(), link: link?.trim() || null, created_by: user.id })
+      .insert({ org_id: orgId, message: message.trim(), link: link?.trim() || null, created_by: user.id })
       .select()
       .single();
     if (insertError) {
       return jsonResponse(req, { error: "Impossible d'enregistrer la publication." }, 500);
     }
 
-    const pageId = Deno.env.get("FACEBOOK_PAGE_ID");
-    const pageToken = Deno.env.get("FACEBOOK_PAGE_ACCESS_TOKEN");
-    if (!pageId || !pageToken) {
+    const conn = await getConnection(serviceClient, orgId, "facebook");
+    if (!conn || !conn.externalId) {
       await serviceClient.from("facebook_posts").update({
         status: "failed",
-        error: "FACEBOOK_PAGE_ID / FACEBOOK_PAGE_ACCESS_TOKEN non configurés côté Supabase.",
+        error: notConnectedError("facebook"),
       }).eq("id", postRow.id);
-      return jsonResponse(req, { error: "Configuration Facebook incomplète (secrets manquants)." }, 500);
+      return jsonResponse(req, { error: notConnectedError("facebook") }, 400);
     }
+    const pageId = conn.externalId;
 
-    const graphBody: Record<string, string> = { message: message.trim(), access_token: pageToken };
+    const graphBody: Record<string, string> = { message: message.trim(), access_token: conn.accessToken };
     if (link?.trim()) graphBody.link = link.trim();
 
     const graphRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {

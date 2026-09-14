@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { sendChannelMessage } from "../_shared/messaging.ts";
+import { callerOrgId, getConnection, NO_ORG_ERROR, notConnectedError } from "../_shared/tenant.ts";
 
 // Relance les points de vente ayant une créance en attente ou partielle
 // (table `receivables`) via WhatsApp, sur leur `owner_phone` (sales_points).
@@ -82,6 +83,11 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(req, { error: "Accès refusé — réservé à la direction." }, 403);
     }
 
+    const orgId = await callerOrgId(callerClient, user.id);
+    if (!orgId) {
+      return jsonResponse(req, { error: NO_ORG_ERROR }, 403);
+    }
+
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -90,11 +96,27 @@ Deno.serve(async (req: Request) => {
     const { data: receivables, error: recvError } = await serviceClient
       .from("receivables")
       .select("id, amount_fcfa, amount_paid, status, sales_point_id, sales_points(name, owner_phone, owner_name)")
+      .eq("org_id", orgId)
       .in("status", ["en_attente", "partiel"]);
 
     if (recvError) {
       return jsonResponse(req, { error: "Impossible de récupérer les créances en attente." }, 500);
     }
+
+    // Le numéro WhatsApp de l'organisation, résolu une seule fois.
+    const waConn = await getConnection(serviceClient, orgId, "whatsapp");
+    if (!waConn) {
+      return jsonResponse(req, { error: notConnectedError("whatsapp") }, 400);
+    }
+
+    // Le message porte le nom de l'organisation, pas un nom en dur : c'est le
+    // commerçant qui relance son client, pas la plateforme.
+    const { data: org } = await serviceClient
+      .from("organizations")
+      .select("name")
+      .eq("id", orgId)
+      .maybeSingle();
+    const orgName = (org?.name as string | undefined) ?? "votre fournisseur";
 
     // Regroupe par point de vente (un point de vente peut avoir plusieurs
     // créances en attente : on envoie un seul message avec le total dû).
@@ -119,8 +141,8 @@ Deno.serve(async (req: Request) => {
     const errors: string[] = [];
     for (const [, info] of bySalesPoint) {
       const greeting = info.ownerName ? `Bonjour ${info.ownerName}` : "Bonjour";
-      const message = `${greeting},\n\nCeci est un rappel amical : votre point de vente "${info.name}" a un solde de ${formatFcfa(info.due)} en attente auprès de Mimsi Distribution (${info.count} créance${info.count > 1 ? "s" : ""}).\n\nMerci de régulariser dès que possible. N'hésitez pas à nous contacter pour toute question.`;
-      const result = await sendChannelMessage("whatsapp", info.phone, message);
+      const message = `${greeting},\n\nCeci est un rappel amical : votre point de vente "${info.name}" a un solde de ${formatFcfa(info.due)} en attente auprès de ${orgName} (${info.count} créance${info.count > 1 ? "s" : ""}).\n\nMerci de régulariser dès que possible. N'hésitez pas à nous contacter pour toute question.`;
+      const result = await sendChannelMessage(waConn, info.phone, message);
       if (result.ok) sent++;
       else {
         failed++;

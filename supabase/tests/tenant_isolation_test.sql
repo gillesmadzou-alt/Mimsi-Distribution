@@ -224,6 +224,53 @@ BEGIN
   RESET ROLE;
   RAISE NOTICE 'OK  kiosque : un kiosque anonyme ne voit que le personnel de son organisation.';
 
+  -- ==========================================================================
+  -- 6. CONNEXIONS SOCIALES : ni jeton, ni compte d'un autre locataire
+  -- ==========================================================================
+  INSERT INTO public.social_connections
+    (org_id, platform, external_id, display_name, access_token_enc)
+  VALUES
+    (v_org_a, 'facebook', 'page-mimsi-123',    'Page Mimsi',    'chiffre-mimsi'),
+    (v_org_b, 'facebook', 'page-boutique-456', 'Page Boutique', 'chiffre-boutique');
+
+  PERFORM set_config('request.jwt.claim.sub', v_user_a::text, true);
+  SET LOCAL ROLE authenticated;
+
+  -- Le compte de l'autre organisation est invisible.
+  SELECT count(*) INTO v_n FROM public.social_connection_status WHERE org_id <> v_org_a;
+  IF v_n > 0 THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FUITE : % connexion(s) sociale(s) d''un autre locataire visibles.', v_n;
+  END IF;
+
+  SELECT count(*) INTO v_n FROM public.social_connection_status WHERE org_id = v_org_a;
+  IF v_n = 0 THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'Alice ne voit plus ses propres connexions sociales.';
+  END IF;
+
+  -- Le jeton n'est jamais lisible, meme chiffre, meme sur sa propre connexion.
+  BEGIN
+    PERFORM access_token_enc FROM public.social_connections WHERE org_id = v_org_a;
+    RESET ROLE;
+    RAISE EXCEPTION 'FUITE : le jeton chiffre est lisible par un utilisateur authentifie.';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;  -- comportement attendu : aucun GRANT sur cette colonne
+  END;
+
+  -- Le jeton d'ingestion ne doit pas non plus fuir par la table organizations.
+  SET LOCAL ROLE authenticated;
+  BEGIN
+    PERFORM ingest_token FROM public.organizations WHERE id = v_org_a;
+    RESET ROLE;
+    RAISE EXCEPTION 'FUITE : le jeton d''ingestion est lisible par un utilisateur authentifie.';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;  -- comportement attendu
+  END;
+
+  RESET ROLE;
+  RAISE NOTICE 'OK  connexions : aucun compte etranger visible, aucun jeton lisible.';
+
   RAISE NOTICE '--------------------------------------------------';
   RAISE NOTICE 'ISOLATION MULTI-LOCATAIRE : TOUS LES CONTROLES PASSENT';
 END

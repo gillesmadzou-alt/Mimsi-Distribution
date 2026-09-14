@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { soleOrgId } from "../_shared/tenant.ts";
 
 // Point d'entrée appelé par n8n (pas par le navigateur) quand une commande /
 // un message de commande arrive depuis Facebook, WhatsApp, Instagram ou
@@ -38,13 +39,52 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Méthode non autorisée" }, 405);
   }
 
-  const expectedSecret = Deno.env.get("MARKETING_WEBHOOK_SECRET");
-  if (!expectedSecret) {
-    console.error("MARKETING_WEBHOOK_SECRET n'est pas configuré côté serveur.");
-    return jsonResponse({ error: "Automatisation non configurée côté serveur." }, 500);
-  }
+  // Authentification ET routage à la fois : le jeton présenté identifie
+  // l'organisation destinataire. Un jeton ne vaut que pour son organisation,
+  // il ne peut donc pas servir à écrire chez un autre client.
+  //
+  // MARKETING_WEBHOOK_SECRET reste accepté tant qu'il n'y a qu'une seule
+  // organisation, pour ne pas casser les automatisations n8n déjà en place.
   const providedSecret = req.headers.get("x-webhook-secret");
-  if (providedSecret !== expectedSecret) {
+  if (!providedSecret) {
+    return jsonResponse({ error: "En-tête x-webhook-secret manquant" }, 401);
+  }
+
+  const serviceClient = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+
+  let orgId: string | null = null;
+
+  const { data: orgRow } = await serviceClient
+    .from("organizations")
+    .select("id")
+    .eq("ingest_token", providedSecret)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (orgRow) {
+    orgId = orgRow.id as string;
+  } else {
+    const legacySecret = Deno.env.get("MARKETING_WEBHOOK_SECRET");
+    if (legacySecret && providedSecret === legacySecret) {
+      orgId = await soleOrgId(serviceClient);
+      if (orgId) {
+        console.warn(
+          "receive-marketing-order : authentification par MARKETING_WEBHOOK_SECRET (secret partagé). " +
+            "Basculer l'automatisation sur le jeton de l'organisation avant le deuxième locataire.",
+        );
+      } else {
+        console.error(
+          "receive-marketing-order : MARKETING_WEBHOOK_SECRET refusé car plusieurs organisations existent. " +
+            "Utiliser le jeton propre à l'organisation.",
+        );
+      }
+    }
+  }
+
+  if (!orgId) {
     return jsonResponse({ error: "Secret invalide" }, 401);
   }
 
@@ -70,15 +110,11 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Fournissez au moins customer_name, customer_phone ou message." }, 400);
   }
 
-  const serviceClient = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
-
   const { data, error } = await serviceClient
     .from("marketing_orders")
     .upsert(
       {
+        org_id: orgId,
         channel,
         customer_name: customerName,
         customer_phone: customerPhone,
