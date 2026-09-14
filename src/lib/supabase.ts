@@ -1308,3 +1308,40 @@ export interface FacebookComment {
   created_at: string;
   updated_at: string;
 }
+
+// --- Connexions aux comptes sociaux (écran « Mes canaux ») -------------------
+// Alimenté par la vue `social_connection_status`, qui n'expose jamais de jeton :
+// la table `social_connections` ne donne aucun droit de lecture sur les
+// colonnes chiffrées (migration 20260914100000).
+
+export type SocialPlatform = 'facebook' | 'instagram' | 'whatsapp' | 'tiktok';
+export type SocialConnectionState = 'active' | 'expired' | 'revoked' | 'error';
+
+export interface SocialConnectionStatus {
+  id: string;
+  org_id: string;
+  platform: SocialPlatform;
+  display_name: string | null;
+  external_id: string;
+  status: SocialConnectionState;
+  scopes: string[];
+  expires_at: string | null;
+  last_used_at: string | null;
+  last_error: string | null;
+  expires_soon: boolean;
+  created_at: string;
+}
+
+export const SOCIAL_PLATFORM_LABELS: Record<SocialPlatform, string> = {
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  whatsapp: 'WhatsApp',
+  tiktok: 'TikTok',
+};
+
+export const SOCIAL_CONNECTION_STATE_LABELS: Record<SocialConnectionState, string> = {
+  active: 'Connecté',
+  expired: 'Jeton expiré',
+  revoked: 'Accès révoqué',
+  error: 'En erreur',
+};

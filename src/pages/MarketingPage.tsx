@@ -6,6 +6,7 @@ import {
   FacebookPost, FacebookComment, AutoReplySetting, AutoReplyChannel,
   Broadcast, BroadcastChannelFilter, FacebookStory,
 } from '@/lib/supabase';
+import { ChannelConnectionPanel } from '@/components/ChannelConnectionPanel';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useToast } from '@/contexts/ToastContext';
@@ -1004,7 +1005,7 @@ export default function MarketingPage() {
 
       {platform === 'facebook' && (
         <div className="space-y-4">
-          {renderStatusNote(CheckCircle2, 'text-emerald-800', 'bg-emerald-50 border-emerald-100', "Connecté et actif : messages, commentaires et publications passent directement par l'app (webhook meta-webhook).")}
+          <ChannelConnectionPanel platform="facebook" />
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-5 py-3 border-b border-gray-100">
@@ -1224,7 +1225,8 @@ export default function MarketingPage() {
 
       {platform === 'whatsapp' && (
         <div className="space-y-4">
-          {renderStatusNote(AlertTriangle, 'text-amber-800', 'bg-amber-50 border-amber-100', "Numéro de test actif pour les essais techniques. Pour un usage réel avec tes clients, il faut enregistrer un numéro WhatsApp de production dans Meta for Developers.")}
+          <ChannelConnectionPanel platform="whatsapp" />
+          {renderStatusNote(AlertTriangle, 'text-amber-800', 'bg-amber-50 border-amber-100', "Le branchement en libre-service d'un numéro WhatsApp demande l'Embedded Signup de Meta (statut Tech Provider). En attendant, le numéro se configure manuellement.")}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
             <p className="text-sm text-gray-600">
               💰 La relance des points de vente en impayé (WhatsApp) se trouve sur la page <span className="font-medium text-gray-900">Créances</span>, bouton « Relancer les impayés ».
@@ -1238,7 +1240,7 @@ export default function MarketingPage() {
 
       {platform === 'instagram' && (
         <div className="space-y-4">
-          {renderStatusNote(Clock, 'text-amber-800', 'bg-amber-50 border-amber-100', "Pas encore connecté : il faut d'abord créer/lier un compte Instagram professionnel à la Page Facebook avant que les messages et le bot ne fonctionnent ici.")}
+          <ChannelConnectionPanel platform="instagram" />
           <p className="text-sm text-gray-500">
             📋 Commandes reçues, 📣 bot de bienvenue et diffusion groupée : onglet <span className="font-medium text-gray-900">Vue d'ensemble</span> (Préparation de campagne + Toutes les commandes, filtrables par canal).
           </p>
