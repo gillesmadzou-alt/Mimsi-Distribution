@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "check": "npm run typecheck && npm run lint && npm run build",
-    "schema:audit": "supabase migration list --linked"
+    "schema:audit": "supabase migration list --linked",
+    "test:isolation": "./scripts/test-tenant-isolation.sh"
   },
   "dependencies": {
     "@sentry/react": "^10.74.0",

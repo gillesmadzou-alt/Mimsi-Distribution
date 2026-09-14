@@ -41,3 +41,34 @@ jobs:
           # actually contact Supabase.
           VITE_SUPABASE_URL: https://placeholder.supabase.co
           VITE_SUPABASE_ANON_KEY: placeholder-anon-key
+
+  isolation:
+    name: Isolation multi-locataire
+    runs-on: ubuntu-latest
+    # Ce job est bloquant : une fuite de donnees entre deux clients est le seul
+    # defaut qui condamne le produit. Voir docs/saas-strategie-produit.md § 4.1.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer le client psql
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Rejouer les migrations et verifier le cloisonnement
+        run: ./scripts/test-tenant-isolation.sh
+        env:
+          PGTEST_HOST: localhost
+          PGTEST_PORT: 5433
+          PGPASSWORD: postgres
