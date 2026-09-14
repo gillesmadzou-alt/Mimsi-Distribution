@@ -112,6 +112,28 @@ function generateLotCode(record: ProductionRecord): string {
   return `LOT-${record.production_date.split('-').join('')}-${record.id.slice(0, 8).toUpperCase()}`;
 }
 
+// Codes EAN-13 pour les étiquettes destinées aux supermarchés/points de
+// vente institutionnels — un vrai code numérique scannable, pas un simple
+// alphanumérique interne. Préfixe 20-29 : plage GS1 réservée à la
+// « circulation restreinte » (usage interne à une entreprise), donc valide
+// sans avoir besoin d'un numéro d'entreprise GS1 enregistré.
+function ean13CheckDigit(digits12: string): number {
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    const d = digits12.charCodeAt(i) - 48;
+    sum += i % 2 === 0 ? d : d * 3;
+  }
+  return (10 - (sum % 10)) % 10;
+}
+
+function generateEAN13(potIndex: number, sequence: number): string {
+  const prefix = '20';
+  const potCode = String(potIndex % 100).padStart(2, '0');
+  const seq = String(sequence % 100000000).padStart(8, '0');
+  const base12 = prefix + potCode + seq;
+  return base12 + String(ean13CheckDigit(base12));
+}
+
 export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: string) => void }) {
   const { offlineMode, manualOffline } = useAuth();
   const { isOnline: online } = useSync();
@@ -130,6 +152,128 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetting, setResetting] = useState(false);
   const canvasRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
+
+  // Sous-page « Supermarché » : étiquettes EAN-13 pour points de vente
+  // institutionnels — générées à la volée, pas persistées en base (aucune
+  // migration nécessaire).
+  const [subPage, setSubPage] = useState<'classique' | 'supermarche'>('classique');
+  const [smPotTypeId, setSmPotTypeId] = useState('');
+  const [smQuantity, setSmQuantity] = useState(1);
+  const [smStartSeq, setSmStartSeq] = useState(1);
+  const [smLabelWidthMm, setSmLabelWidthMm] = useState(85);
+  const [smCodes, setSmCodes] = useState<{ code: string; potTypeName: string }[]>([]);
+  const [smExporting, setSmExporting] = useState(false);
+  const [smError, setSmError] = useState<string | null>(null);
+  const smCanvasRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
+
+  useEffect(() => {
+    smCodes.forEach(({ code }) => {
+      const canvas = smCanvasRefs.current[code];
+      if (canvas) drawBarcodeOnCanvas(canvas, code, 'EAN13');
+    });
+  }, [smCodes]);
+
+  const generateSupermarche = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!smPotTypeId || smQuantity < 1) return;
+    const potIndex = potTypes.findIndex((p) => p.id === smPotTypeId) + 1;
+    const potType = potTypes.find((p) => p.id === smPotTypeId);
+    const codes = Array.from({ length: smQuantity }, (_, i) => ({
+      code: generateEAN13(potIndex, smStartSeq + i),
+      potTypeName: potType?.name ?? '—',
+    }));
+    setSmCodes(codes);
+  };
+
+  const exportSupermarchePDF = async () => {
+    if (smCodes.length === 0) return;
+    setSmExporting(true);
+    setSmError(null);
+    try {
+      const { labelDataUrl: labelArtworkDataUrl, patternBandDataUrl, patternBandRatio } = await loadLabelAssets('/etiquette-madeleines-mimsi-sans-qr-hd.png');
+      const today = new Date().toISOString().slice(0, 10);
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const margin = 10;
+      const labelWidth = smLabelWidthMm;
+      const artworkHeight = labelWidth;
+      const variablePanelHeight = 22;
+      const labelHeight = artworkHeight + variablePanelHeight;
+      const gapX = 5;
+      const gapY = 6;
+      const headerOffset = 10;
+      const cols = Math.max(1, Math.floor((210 - 2 * margin + gapX) / (labelWidth + gapX)));
+      const rowsPerPage = Math.max(1, Math.floor((297 - margin - headerOffset - margin + gapY) / (labelHeight + gapY)));
+
+      let col = 0;
+      let row = 0;
+      let pageIndex = 0;
+      const drawPageHeader = (pg: number) => {
+        doc.setFontSize(10);
+        doc.setTextColor(120, 120, 120);
+        doc.text(`Étiquettes supermarché (EAN-13) — page ${pg + 1}`, margin, 7);
+      };
+      drawPageHeader(pageIndex);
+
+      smCodes.forEach(({ code, potTypeName }) => {
+        if (row >= rowsPerPage) {
+          doc.addPage();
+          pageIndex++;
+          row = 0;
+          col = 0;
+          drawPageHeader(pageIndex);
+        }
+        const x = margin + col * (labelWidth + gapX);
+        const y = margin + 10 + row * (labelHeight + gapY);
+
+        doc.setDrawColor(190, 22, 25);
+        doc.setLineWidth(0.35);
+        doc.roundedRect(x, y, labelWidth, labelHeight, 2, 2, 'S');
+        doc.addImage(labelArtworkDataUrl, 'PNG', x, y, labelWidth, artworkHeight);
+        doc.setFillColor(255, 255, 255);
+        doc.rect(x + 0.35, y + artworkHeight, labelWidth - 0.7, variablePanelHeight - 0.35, 'F');
+        drawVariablePanelPattern(doc, patternBandDataUrl, patternBandRatio, x, y + artworkHeight, labelWidth, variablePanelHeight);
+
+        const panelTop = y + artworkHeight;
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(x + 7, panelTop + 0.8, labelWidth - 14, 4.8, 0.8, 0.8, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(190, 22, 25);
+        const potNameUpper = potTypeName.toUpperCase();
+        fitFontSize(doc, potNameUpper, labelWidth - 10, 10, 7);
+        doc.text(potNameUpper, x + labelWidth / 2, panelTop + 4.5, { align: 'center' });
+
+        const barcodeCanvas = document.createElement('canvas');
+        JsBarcode(barcodeCanvas, code, {
+          format: 'EAN13',
+          displayValue: false,
+          height: 60,
+          width: 2,
+          margin: 12,
+          background: '#ffffff',
+          lineColor: '#000000',
+        });
+        const barcodeData = barcodeCanvas.toDataURL('image/png');
+        doc.addImage(barcodeData, 'PNG', x + 5, panelTop + 6, labelWidth - 10, 9);
+
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(x + 8, panelTop + 17.4, labelWidth - 16, 4.2, 0.8, 0.8, 'F');
+        doc.setFont('courier', 'normal');
+        doc.setTextColor(45, 52, 54);
+        fitFontSize(doc, code, labelWidth - 10, 8, 6);
+        doc.text(code, x + labelWidth / 2, panelTop + 20.5, { align: 'center' });
+
+        col++;
+        if (col >= cols) { col = 0; row++; }
+      });
+
+      doc.save(`code-barres-supermarche-${today}.pdf`);
+    } catch (error) {
+      console.error('supermarché barcode PDF export failed:', error);
+      setSmError('Impossible de générer le PDF. Réessayez.');
+    } finally {
+      setSmExporting(false);
+    }
+  };
 
   const loadAll = useCallback(async () => {
     // Show cached barcodes immediately (offline-first)
@@ -419,6 +563,27 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
 
   return (
     <div className="space-y-6">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setSubPage('classique')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+            subPage === 'classique' ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          <Barcode className="w-4 h-4" /> Classique
+        </button>
+        <button
+          onClick={() => setSubPage('supermarche')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+            subPage === 'supermarche' ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          <Package className="w-4 h-4" /> Supermarché
+        </button>
+      </div>
+
+      {subPage === 'classique' && (
+      <div className="space-y-6">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-md">
@@ -665,6 +830,131 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
               </button>
             </div>
           </div>
+        </div>
+      )}
+      </div>
+      )}
+
+      {subPage === 'supermarche' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-md">
+                <Package className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-lg">Codes à barres pour supermarché</h3>
+                <p className="text-sm text-gray-500">Codes EAN-13 institutionnels, générés à la volée — pas liés au stock/production</p>
+              </div>
+            </div>
+
+            <form onSubmit={generateSupermarche} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type de pot</label>
+                <select
+                  value={smPotTypeId}
+                  onChange={(e) => setSmPotTypeId(e.target.value)}
+                  required
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none"
+                >
+                  <option value="">— Choisir —</option>
+                  {potTypes.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name} ({formatFCFA(p.unit_price_fcfa)})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Numéro de départ</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={smStartSeq}
+                  onChange={(e) => setSmStartSeq(parseInt(e.target.value) || 1)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Quantité</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={smQuantity}
+                  onChange={(e) => setSmQuantity(parseInt(e.target.value) || 1)}
+                  required
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none"
+                />
+              </div>
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-md hover:shadow-lg transition-all"
+              >
+                <Plus className="w-5 h-5" /> Générer
+              </button>
+            </form>
+            <p className="mt-3 text-xs text-gray-400">
+              Format EAN-13, préfixe 20 (plage GS1 réservée à l'usage interne/institutionnel) — pas besoin d'enregistrement GS1. Ces codes ne sont pas enregistrés en base : ils servent uniquement à imprimer des étiquettes pour ce lot de supermarché.
+            </p>
+          </div>
+
+          {smCodes.length > 0 && (() => {
+            const artworkH = smLabelWidthMm;
+            const labelH = artworkH + 22;
+            const colsPreview = Math.max(1, Math.floor((210 - 2 * 10 + 5) / (smLabelWidthMm + 5)));
+            const rowsPreview = Math.max(1, Math.floor((297 - 10 - 10 - 10 + 6) / (labelH + 6)));
+            const perSheet = colsPreview * rowsPreview;
+            const sheetsNeeded = Math.ceil(smCodes.length / perSheet);
+            return (
+              <div className="space-y-3">
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-end gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Largeur étiquette (mm)</label>
+                    <input
+                      type="number"
+                      min={30}
+                      max={100}
+                      value={smLabelWidthMm}
+                      onChange={(e) => setSmLabelWidthMm(Math.min(100, Math.max(30, parseInt(e.target.value) || 85)))}
+                      className="w-28 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-amber-500 outline-none"
+                    />
+                  </div>
+                  <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                    <span className="font-medium text-gray-900">{perSheet}</span> étiquette{perSheet > 1 ? 's' : ''} / feuille A4
+                    {' · '}
+                    <span className="font-medium text-gray-900">{smCodes.length}</span> au total → <span className="font-medium text-gray-900">{sheetsNeeded}</span> feuille{sheetsNeeded > 1 ? 's' : ''}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => { void exportSupermarchePDF(); }}
+                    disabled={smExporting}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50"
+                  >
+                    {smExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    {smExporting ? 'Génération du PDF…' : `Exporter PDF (${smCodes.length})`}
+                  </button>
+                  {smError && <p className="text-sm text-red-600">{smError}</p>}
+                </div>
+              </div>
+            );
+          })()}
+
+          {smCodes.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <Package className="w-5 h-5 text-amber-600" />
+                Codes générés ({smCodes.length})
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                {smCodes.map(({ code, potTypeName }) => (
+                  <div key={code} className="border border-gray-200 rounded-xl p-3 flex flex-col items-center gap-2">
+                    <canvas ref={(el) => { smCanvasRefs.current[code] = el; }} className="w-full" />
+                    <div className="text-xs text-gray-500 font-mono text-center break-all">{code}</div>
+                    <div className="text-xs text-gray-400">{potTypeName}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
