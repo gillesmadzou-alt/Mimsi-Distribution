@@ -1253,10 +1253,25 @@ export interface FacebookPost {
 
 export type AutoReplyChannel = 'whatsapp' | 'facebook' | 'instagram';
 
+export type AutoReplyMode = 'simple' | 'conversational';
+
 export interface AutoReplySetting {
   channel: AutoReplyChannel;
   enabled: boolean;
   message: string;
+  mode: AutoReplyMode;
+  system_prompt: string | null;
+  updated_at: string;
+}
+
+export interface CampaignSupportDraft {
+  id: string;
+  channel: MarketingChannel;
+  title: string;
+  body: string;
+  cta: string | null;
+  created_by: string;
+  created_at: string;
   updated_at: string;
 }
 

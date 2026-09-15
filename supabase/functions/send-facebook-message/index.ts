@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { deactivateBotForCustomer } from "../_shared/bot.ts";
 
 // Envoie une réponse à un client qui a écrit sur Messenger (Page Facebook).
 // Appelée depuis l'onglet Marketing > Commandes reçues, bouton "Répondre"
@@ -109,7 +110,17 @@ Deno.serve(async (req: Request) => {
         Deno.env.get("SUPABASE_URL")!,
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
       );
-      await serviceClient.from("marketing_orders").update({ status: "en_cours" }).eq("id", order_id);
+      const { data: order } = await serviceClient
+        .from("marketing_orders")
+        .update({ status: "en_cours" })
+        .eq("id", order_id)
+        .select("channel")
+        .maybeSingle();
+      // Un humain vient de répondre manuellement : on coupe le bot IA pour
+      // ce client (voir _shared/bot.ts) tant que personne ne le réactive.
+      if (order?.channel === "whatsapp" || order?.channel === "facebook" || order?.channel === "instagram") {
+        await deactivateBotForCustomer(serviceClient, order.channel, recipient_id);
+      }
     }
 
     return jsonResponse(req, { success: true, message_id: (graphData as { message_id?: string })?.message_id ?? null }, 200);

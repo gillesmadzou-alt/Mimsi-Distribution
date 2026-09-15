@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   supabase, MarketingChannel, MARKETING_CHANNEL_LABELS,
-  AutoReplySetting, AutoReplyChannel, Broadcast, BroadcastChannelFilter,
+  AutoReplySetting, AutoReplyChannel, AutoReplyMode, Broadcast, BroadcastChannelFilter,
+  CampaignSupportDraft,
 } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
@@ -9,7 +10,10 @@ import { useToast } from '@/contexts/ToastContext';
 import {
   Facebook, Instagram, MessageCircle, Music2,
   Target, Calendar, Users, Lightbulb, Loader2, Bot, Radio, Save,
+  FileEdit, Sparkles, Trash2, Plus,
 } from 'lucide-react';
+
+type PrepTab = 'strategie' | 'support';
 
 const CHANNELS: { id: MarketingChannel; label: string; icon: typeof Facebook; iconColor: string }[] = [
   { id: 'facebook', label: 'Facebook', icon: Facebook, iconColor: 'text-blue-600' },
@@ -102,12 +106,21 @@ const STRATEGIES: ChannelStrategy[] = [
 export default function CampaignPrepPage() {
   const { toast } = useToast();
   const { isOffline } = useOfflineFetch();
+  const [tab, setTab] = useState<PrepTab>('strategie');
   const [channel, setChannel] = useState<MarketingChannel>('facebook');
 
   const [autoReplySettings, setAutoReplySettings] = useState<AutoReplySetting[]>([]);
   const [autoReplyLoading, setAutoReplyLoading] = useState(true);
   const [autoReplyDrafts, setAutoReplyDrafts] = useState<Record<string, string>>({});
+  const [systemPromptDrafts, setSystemPromptDrafts] = useState<Record<string, string>>({});
   const [autoReplySaving, setAutoReplySaving] = useState<string | null>(null);
+
+  const [supportDrafts, setSupportDrafts] = useState<CampaignSupportDraft[]>([]);
+  const [supportDraftsLoading, setSupportDraftsLoading] = useState(true);
+  const [newDraftTitle, setNewDraftTitle] = useState('');
+  const [newDraftBody, setNewDraftBody] = useState('');
+  const [newDraftCta, setNewDraftCta] = useState('');
+  const [newDraftSaving, setNewDraftSaving] = useState(false);
 
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
   const [broadcastsLoading, setBroadcastsLoading] = useState(true);
@@ -123,6 +136,11 @@ export default function CampaignPrepPage() {
       setAutoReplyDrafts((prev) => {
         const next = { ...prev };
         for (const r of rows) if (next[r.channel] === undefined) next[r.channel] = r.message;
+        return next;
+      });
+      setSystemPromptDrafts((prev) => {
+        const next = { ...prev };
+        for (const r of rows) if (next[r.channel] === undefined) next[r.channel] = r.system_prompt ?? '';
         return next;
       });
     }
@@ -141,6 +159,15 @@ export default function CampaignPrepPage() {
     }
   };
 
+  const setAutoReplyMode = async (ch: AutoReplyChannel, mode: AutoReplyMode) => {
+    setAutoReplySettings((prev) => prev.map((s) => (s.channel === ch ? { ...s, mode } : s)));
+    const { error } = await supabase.from('auto_reply_settings').update({ mode }).eq('channel', ch);
+    if (error) {
+      toast('Impossible de changer le mode du bot.', 'error');
+      loadAutoReplySettings();
+    }
+  };
+
   const saveAutoReplyMessage = async (ch: AutoReplyChannel) => {
     const message = (autoReplyDrafts[ch] ?? '').trim();
     if (!message) {
@@ -155,6 +182,18 @@ export default function CampaignPrepPage() {
       return;
     }
     toast('Message du bot enregistré.', 'success');
+  };
+
+  const saveSystemPrompt = async (ch: AutoReplyChannel) => {
+    const system_prompt = (systemPromptDrafts[ch] ?? '').trim();
+    setAutoReplySaving(ch);
+    const { error } = await supabase.from('auto_reply_settings').update({ system_prompt: system_prompt || null }).eq('channel', ch);
+    setAutoReplySaving(null);
+    if (error) {
+      toast("Impossible d'enregistrer le prompt.", 'error');
+      return;
+    }
+    toast('Prompt du bot IA enregistré.', 'success');
   };
 
   const loadBroadcasts = useCallback(async () => {
@@ -196,6 +235,65 @@ export default function CampaignPrepPage() {
     loadBroadcasts();
   };
 
+  const loadSupportDrafts = useCallback(async () => {
+    setSupportDraftsLoading(true);
+    const { data, error } = await supabase
+      .from('campaign_support_drafts')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (!error) setSupportDrafts((data as CampaignSupportDraft[]) ?? []);
+    setSupportDraftsLoading(false);
+  }, []);
+
+  useEffect(() => { if (tab === 'support') loadSupportDrafts(); }, [tab, loadSupportDrafts]);
+  useRealtimeSubscription('campaign-prep-support-drafts', isOffline || tab !== 'support' ? [] : ['campaign_support_drafts'], loadSupportDrafts);
+
+  const createSupportDraft = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!newDraftTitle.trim()) {
+      toast('Le titre est obligatoire.', 'error');
+      return;
+    }
+    setNewDraftSaving(true);
+    const { error } = await supabase.from('campaign_support_drafts').insert({
+      channel,
+      title: newDraftTitle.trim(),
+      body: newDraftBody.trim(),
+      cta: newDraftCta.trim() || null,
+    });
+    setNewDraftSaving(false);
+    if (error) {
+      toast("Impossible d'enregistrer le brouillon.", 'error');
+      return;
+    }
+    toast('Brouillon enregistré.', 'success');
+    setNewDraftTitle('');
+    setNewDraftBody('');
+    setNewDraftCta('');
+    loadSupportDrafts();
+  };
+
+  const deleteSupportDraft = async (id: string) => {
+    if (!window.confirm('Supprimer ce brouillon ?')) return;
+    const { error } = await supabase.from('campaign_support_drafts').delete().eq('id', id);
+    if (error) {
+      toast('Impossible de supprimer.', 'error');
+      return;
+    }
+    setSupportDrafts((prev) => prev.filter((d) => d.id !== id));
+  };
+
+  const copyDraftToClipboard = async (draft: CampaignSupportDraft) => {
+    const text = [draft.title, draft.body, draft.cta].filter(Boolean).join('\n\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Contenu copié.', 'success');
+    } catch {
+      toast('Impossible de copier automatiquement — sélectionnez le texte manuellement.', 'error');
+    }
+  };
+
   const hasAutoReply = channel === 'facebook' || channel === 'whatsapp' || channel === 'instagram';
   const hasBroadcast = hasAutoReply;
   const strategy = STRATEGIES.find((s) => s.channel === channel);
@@ -204,7 +302,26 @@ export default function CampaignPrepPage() {
     <div className="space-y-4">
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
         <h1 className="font-bold text-gray-900 text-lg flex items-center gap-2"><Target className="w-5 h-5 text-amber-600" /> Préparation de campagne</h1>
-        <p className="text-sm text-gray-500 mt-1">Toutes les stratégies par réseau, ainsi que le bot de bienvenue et la diffusion groupée pour préparer puis lancer une campagne.</p>
+        <p className="text-sm text-gray-500 mt-1">Stratégies par réseau, bot (message unique ou conversation IA), diffusion groupée et création de supports.</p>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setTab('strategie')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+            tab === 'strategie' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          <Target className="w-4 h-4" /> Stratégies &amp; diffusion
+        </button>
+        <button
+          onClick={() => setTab('support')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+            tab === 'support' ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          <FileEdit className="w-4 h-4" /> Création de support
+        </button>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -222,7 +339,7 @@ export default function CampaignPrepPage() {
         ))}
       </div>
 
-      {strategy && (
+      {tab === 'strategie' && strategy && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-4">
           <div className="flex items-center gap-3">
             <div className={`w-11 h-11 rounded-xl bg-gray-50 flex items-center justify-center shrink-0 ${strategy.iconColor}`}>
@@ -257,8 +374,9 @@ export default function CampaignPrepPage() {
         </div>
       )}
 
-      {hasAutoReply && (() => {
+      {tab === 'strategie' && hasAutoReply && (() => {
         const setting = autoReplySettings.find((s) => s.channel === channel);
+        const mode = setting?.mode ?? 'simple';
         return (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-3">
             <div className="flex items-center justify-between">
@@ -271,31 +389,76 @@ export default function CampaignPrepPage() {
                 <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${setting?.enabled ? 'translate-x-4' : ''}`} />
               </button>
             </div>
-            <p className="text-sm text-gray-600">Envoie automatiquement ce message au tout premier contact d'un client (une seule fois, pas à chaque message).</p>
+
+            <div className="flex items-center gap-2 text-sm">
+              <button
+                onClick={() => setAutoReplyMode(channel as AutoReplyChannel, 'simple')}
+                className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${mode === 'simple' ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                Simple (message unique)
+              </button>
+              <button
+                onClick={() => setAutoReplyMode(channel as AutoReplyChannel, 'conversational')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition-colors ${mode === 'conversational' ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                <Sparkles className="w-3.5 h-3.5" /> Conversationnel (IA)
+              </button>
+            </div>
+
             {autoReplyLoading ? (
               <div className="text-sm text-gray-400">Chargement…</div>
+            ) : mode === 'simple' ? (
+              <>
+                <p className="text-sm text-gray-600">Envoie automatiquement ce message au tout premier contact d'un client (une seule fois, pas à chaque message).</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={autoReplyDrafts[channel] ?? ''}
+                    onChange={(e) => setAutoReplyDrafts((prev) => ({ ...prev, [channel]: e.target.value }))}
+                    className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-violet-500"
+                  />
+                  <button
+                    onClick={() => saveAutoReplyMessage(channel as AutoReplyChannel)}
+                    disabled={autoReplySaving === channel}
+                    className="shrink-0 p-2 rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-100 transition-colors disabled:opacity-50"
+                    title="Enregistrer"
+                  >
+                    {autoReplySaving === channel ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  </button>
+                </div>
+              </>
             ) : (
-              <div className="flex items-center gap-2">
-                <input
-                  value={autoReplyDrafts[channel] ?? ''}
-                  onChange={(e) => setAutoReplyDrafts((prev) => ({ ...prev, [channel]: e.target.value }))}
-                  className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-violet-500"
-                />
-                <button
-                  onClick={() => saveAutoReplyMessage(channel as AutoReplyChannel)}
-                  disabled={autoReplySaving === channel}
-                  className="shrink-0 p-2 rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-100 transition-colors disabled:opacity-50"
-                  title="Enregistrer"
-                >
-                  {autoReplySaving === channel ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                </button>
-              </div>
+              <>
+                <p className="text-sm text-gray-600">
+                  Répond à chaque message du client (pas une seule fois) en s'appuyant sur un LLM et l'historique de la conversation — jusqu'à ce qu'un membre de l'équipe réponde manuellement (le bot se met alors en pause pour ce client).
+                </p>
+                <div className="bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-xs text-amber-800">
+                  Nécessite le secret Supabase <code className="font-mono">ANTHROPIC_API_KEY</code> côté serveur (à configurer une fois). Chaque réponse a un coût (tokens) — suivi dans la table <code className="font-mono">bot_messages</code>.
+                </div>
+                <label className="block text-xs font-medium text-gray-500">Prompt système (qui est le bot, produits/prix/zones/horaires, ton à adopter…)</label>
+                <div className="flex items-start gap-2">
+                  <textarea
+                    value={systemPromptDrafts[channel] ?? ''}
+                    onChange={(e) => setSystemPromptDrafts((prev) => ({ ...prev, [channel]: e.target.value }))}
+                    rows={5}
+                    placeholder="Ex : Tu es l'assistant de Mimsi Distribution. Nos madeleines coûtent... Nos zones de livraison sont... Nos horaires sont... Si tu ne sais pas, dis-le et propose de transmettre à l'équipe."
+                    className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-violet-500"
+                  />
+                  <button
+                    onClick={() => saveSystemPrompt(channel as AutoReplyChannel)}
+                    disabled={autoReplySaving === channel}
+                    className="shrink-0 p-2 rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-100 transition-colors disabled:opacity-50"
+                    title="Enregistrer"
+                  >
+                    {autoReplySaving === channel ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  </button>
+                </div>
+              </>
             )}
           </div>
         );
       })()}
 
-      {hasBroadcast && (() => {
+      {tab === 'strategie' && hasBroadcast && (() => {
         const bcChannel = channel as BroadcastChannelFilter;
         const history = broadcasts.filter((b) => b.channel === bcChannel).slice(0, 5);
         return (
@@ -340,8 +503,80 @@ export default function CampaignPrepPage() {
         );
       })()}
 
-      {!hasAutoReply && !hasBroadcast && (
+      {tab === 'strategie' && !hasAutoReply && !hasBroadcast && (
         <p className="text-xs text-gray-400 px-1">Le bot et la diffusion groupée arriveront ici dès qu'une intégration technique existera pour TikTok.</p>
+      )}
+
+      {tab === 'support' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 space-y-3">
+            <h3 className="font-bold text-gray-900 flex items-center gap-2"><Plus className="w-4 h-4 text-amber-600" /> Nouveau brouillon — {MARKETING_CHANNEL_LABELS[channel]}</h3>
+            <form onSubmit={createSupportDraft} className="space-y-3">
+              <input
+                value={newDraftTitle}
+                onChange={(e) => setNewDraftTitle(e.target.value)}
+                placeholder="Titre / accroche"
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-amber-500"
+              />
+              <textarea
+                value={newDraftBody}
+                onChange={(e) => setNewDraftBody(e.target.value)}
+                placeholder="Texte du contenu (post, story, message...)"
+                rows={4}
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-amber-500"
+              />
+              <input
+                value={newDraftCta}
+                onChange={(e) => setNewDraftCta(e.target.value)}
+                placeholder="Appel à l'action (optionnel) — ex : Commander sur WhatsApp"
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-amber-500"
+              />
+              <button
+                type="submit"
+                disabled={newDraftSaving}
+                className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white text-sm font-medium shadow-sm hover:shadow-md transition-all disabled:opacity-50"
+              >
+                {newDraftSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Enregistrer le brouillon
+              </button>
+            </form>
+          </div>
+
+          <div className="space-y-3">
+            {supportDraftsLoading ? (
+              <div className="text-sm text-gray-400 px-1">Chargement…</div>
+            ) : supportDrafts.length === 0 ? (
+              <p className="text-sm text-gray-400 px-1">Aucun brouillon pour l'instant.</p>
+            ) : (
+              supportDrafts.map((d) => {
+                const meta = CHANNELS.find((c) => c.id === d.channel);
+                return (
+                  <div key={d.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs font-medium text-gray-500">
+                        {meta && <meta.icon className={`w-3.5 h-3.5 ${meta.iconColor}`} />}
+                        {meta?.label ?? d.channel}
+                        <span className="text-gray-300">·</span>
+                        {new Date(d.created_at).toLocaleDateString('fr-FR')}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => copyDraftToClipboard(d)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400" title="Copier">
+                          <FileEdit className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => deleteSupportDraft(d.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500" title="Supprimer">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <p className="font-semibold text-gray-900 text-sm">{d.title}</p>
+                    {d.body && <p className="text-sm text-gray-600 whitespace-pre-wrap">{d.body}</p>}
+                    {d.cta && <p className="text-xs text-amber-700 bg-amber-50 inline-block px-2 py-1 rounded-lg">{d.cta}</p>}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

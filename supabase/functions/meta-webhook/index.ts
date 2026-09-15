@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { sendChannelMessage } from "../_shared/messaging.ts";
+import { generateBotReply, getOrCreateConversation, recordMessage } from "../_shared/bot.ts";
 
 // Remplace le webhook n8n : reçoit DIRECTEMENT les évènements Meta (WhatsApp
 // Business, Messenger, Instagram, commentaires sur la Page) et les
@@ -171,31 +172,65 @@ function normalizeCommentEntries(body: Record<string, unknown>): NormalizedComme
   return results;
 }
 
-// Envoie le message de bienvenue configuré pour ce canal (auto_reply_settings),
-// mais seulement si c'est la toute première fois qu'on entend parler de ce
-// client sur ce canal — évite de spammer une conversation déjà en cours.
-async function maybeSendAutoReply(
+// Bot de réponse automatique pour ce canal (auto_reply_settings). Deux modes :
+//  - "simple" (historique) : un seul message de bienvenue, au tout premier
+//    contact d'un client, jamais relancé ensuite.
+//  - "conversational" : un vrai échange, message après message, généré par
+//    un LLM (voir _shared/bot.ts) à partir de l'historique de la
+//    conversation — tant qu'un humain n'a pas répondu manuellement au
+//    client (ce qui coupe le bot pour ce fil, voir send-facebook-message).
+async function handleAutoReply(
   serviceClient: ReturnType<typeof createClient>,
   channel: "whatsapp" | "facebook" | "instagram",
   customerPhone: string,
+  incomingMessage: string | null,
 ) {
   try {
-    const { count } = await serviceClient
-      .from("marketing_orders")
-      .select("id", { count: "exact", head: true })
-      .eq("channel", channel)
-      .eq("customer_phone", customerPhone);
-    if ((count ?? 0) > 1) return; // déjà un historique avec ce client sur ce canal
-
     const { data: settings } = await serviceClient
       .from("auto_reply_settings")
-      .select("enabled, message")
+      .select("enabled, message, mode, system_prompt")
       .eq("channel", channel)
       .maybeSingle();
-    if (!settings?.enabled || !settings.message) return;
+    if (!settings?.enabled) return;
 
-    const result = await sendChannelMessage(channel, customerPhone, settings.message);
-    if (!result.ok) console.error(`meta-webhook auto-reply (${channel}) error:`, result.error);
+    if (settings.mode !== "conversational") {
+      // Mode simple : comportement historique, un message une seule fois.
+      const { count } = await serviceClient
+        .from("marketing_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("channel", channel)
+        .eq("customer_phone", customerPhone);
+      if ((count ?? 0) > 1) return; // déjà un historique avec ce client sur ce canal
+      if (!settings.message) return;
+
+      const result = await sendChannelMessage(channel, customerPhone, settings.message);
+      if (!result.ok) console.error(`meta-webhook auto-reply (${channel}) error:`, result.error);
+      return;
+    }
+
+    // Mode conversationnel.
+    if (!incomingMessage) return; // rien à répondre (message non textuel, etc.)
+    const conversation = await getOrCreateConversation(serviceClient, channel, customerPhone);
+    if (!conversation) return;
+
+    await recordMessage(serviceClient, conversation.id, "user", incomingMessage);
+    if (!conversation.bot_active) return; // un humain a repris cette conversation
+
+    const reply = await generateBotReply(serviceClient, conversation.id, settings.system_prompt);
+    if (!reply.ok) {
+      console.error(`meta-webhook bot IA (${channel}) error:`, reply.error);
+      return;
+    }
+
+    const sent = await sendChannelMessage(channel, customerPhone, reply.text);
+    if (!sent.ok) {
+      console.error(`meta-webhook bot IA send (${channel}) error:`, sent.error);
+      return;
+    }
+    await recordMessage(serviceClient, conversation.id, "assistant", reply.text, {
+      inputTokens: reply.inputTokens,
+      outputTokens: reply.outputTokens,
+    });
   } catch (err) {
     console.error("meta-webhook auto-reply unexpected error:", err);
   }
@@ -276,10 +311,10 @@ Deno.serve(async (req: Request) => {
     }
     inserted++;
 
-    // Bot de réponse automatique : envoyé une seule fois, au tout premier
-    // message d'un client sur ce canal (pas à chaque message).
+    // Bot de réponse automatique (message unique ou conversation IA selon
+    // le mode configuré pour ce canal — voir handleAutoReply).
     if (insertedRow && msg.customerPhone) {
-      await maybeSendAutoReply(serviceClient, msg.channel, msg.customerPhone);
+      await handleAutoReply(serviceClient, msg.channel, msg.customerPhone, msg.message);
     }
   }
 
