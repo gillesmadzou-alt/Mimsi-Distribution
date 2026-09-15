@@ -948,30 +948,41 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
     {
       id: 'sales-points',
       title: 'Rapport des points de vente',
-      description: 'État des points de vente, quotas et statuts',
+      description: 'Points de vente enregistrés sur la période, quotas et statuts',
       icon: Users,
       roles: [4, 5, 6, 7],
       build: async () => {
+        // Filtre par commercial ET par période d'enregistrement (created_at) —
+        // avant ce correctif, la période sélectionnée en haut de la page
+        // était ignorée par ce rapport, qui listait TOUS les points de vente
+        // du commercial peu importe leur date de création. Un commercial
+        // sans aucun point créé sur la période choisie se retrouvait donc
+        // avec un PDF vide sans que ce soit visible dans l'interface.
+        const inScope = (sp: (typeof salesPoints)[number]) => matchesSelectedDriver(sp.driver_id) && inRange(sp.created_at);
+        const filtered = salesPoints.filter(inScope);
         return {
           columns: [
             { header: 'Nom', key: 'name' },
             { header: 'Commercial', key: 'driver' },
             { header: 'Quartier', key: 'district' },
             { header: 'Zone', key: 'zone' },
+            { header: 'Enregistré le', key: 'createdAt' },
             { header: 'Quota', key: 'quota', align: 'right' as const },
             { header: 'Quota payé', key: 'paid', align: 'right' as const },
             { header: 'Statut quota', key: 'qStatus', align: 'center' as const },
             { header: 'Actif', key: 'active', align: 'center' as const },
           ],
-          rows: salesPoints.filter((sp) => matchesSelectedDriver(sp.driver_id)).map((sp) => ({
+          rows: filtered.map((sp) => ({
             name: sp.name, district: sp.district, zone: sp.zone,
             driver: sp.driver_id ? (drivers.find((driver) => driver.id === sp.driver_id)?.full_name ?? 'Commercial inconnu') : 'Sans commercial',
+            createdAt: fmtDate(sp.created_at),
             quota: formatFCFA(sp.quota_amount), paid: formatFCFA(sp.quota_paid),
             qStatus: sp.quota_status, active: sp.is_active ? 'Oui' : 'Non',
           })),
           summary: [
-            { label: 'Total points de vente', value: String(salesPoints.filter((sp) => matchesSelectedDriver(sp.driver_id)).length) },
-            { label: 'Points actifs', value: String(salesPoints.filter((sp) => matchesSelectedDriver(sp.driver_id) && sp.is_active).length) },
+            { label: 'Total points de vente', value: String(filtered.length) },
+            { label: 'Points actifs', value: String(filtered.filter((sp) => sp.is_active).length) },
+            { label: 'Période', value: `${fmtDate(fromDate)} — ${fmtDate(toDate)}` },
             { label: 'Périmètre', value: reportScopeLabel },
           ],
         };
