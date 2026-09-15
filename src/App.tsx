@@ -46,6 +46,7 @@ const OpportunisticSalesPage = lazy(() => import('@/pages/OpportunisticSalesPage
 const MarketingPage = lazy(() => import('@/pages/MarketingPage'));
 const CampaignPrepPage = lazy(() => import('@/pages/CampaignPrepPage'));
 const DocumentsPage = lazy(() => import('@/pages/DocumentsPage'));
+const PayrollPage = lazy(() => import('@/pages/PayrollPage'));
 const KioskCheckIn = lazy(() => import('@/pages/KioskCheckIn'));
 
 function PageLoader() {
@@ -138,6 +139,7 @@ function OfficeApp() {
     marketing: <MarketingPage />,
     'campaign-prep': <CampaignPrepPage />,
     documents: <DocumentsPage onNavigate={navFromPage} />,
+    payroll: <PayrollPage />,
   };
 
   const role = (profile?.role ?? 1) as UserRole;

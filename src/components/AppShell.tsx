@@ -10,7 +10,7 @@ import {
   Activity, Sparkles, Megaphone,
   Bell, Map, Network, Barcode, UserCog, Menu, X, WifiOff, Wifi, CloudOff,
   ClipboardList, Receipt, UserCheck, DownloadCloud, DatabaseBackup, Loader2, CheckCircle2, PiggyBank,
-  Camera, KeyRound, FolderOpen, Target,
+  Camera, KeyRound, FolderOpen, Target, Banknote,
 } from 'lucide-react';
 import NotificationBell from '@/components/NotificationBell';
 import InstallBanner from '@/components/InstallBanner';
@@ -29,7 +29,7 @@ export type PageId =
   | 'consignments' | 'restock' | 'leave'
   | 'leaderboard' | 'audit' | 'production' | 'map' | 'org-chart'
   | 'barcodes' | 'users' | 'approvals' | 'scheduling' | 'ingredients' | 'reports'
-  | 'observations' | 'expenses' | 'attendance' | 'notification-archive' | 'marketing' | 'campaign-prep' | 'documents';
+  | 'observations' | 'expenses' | 'attendance' | 'notification-archive' | 'marketing' | 'campaign-prep' | 'documents' | 'payroll';
 
 interface NavSection {
   label: string;
@@ -70,6 +70,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'Finance',
     items: [
       { id: 'account-keeping', label: 'Tenue de compte', description: 'Journal de caisse, comptes clients et compte banque', icon: BookOpen, minRole: 3 },
+      { id: 'payroll', label: 'Paiement des salaires', description: 'Fiches de paie du personnel, liées automatiquement à la tenue de compte', icon: Banknote, minRole: 3 },
       { id: 'receivables', label: 'Créances', description: 'Montants dus par les points de vente et paiements reçus', icon: Wallet, minRole: 3 },
       { id: 'contributions', label: 'Cotisations', description: 'Suivi détaillé des cotisations et de leur historique', icon: PiggyBank, minRole: 2 },
       { id: 'expenses', label: 'Dépenses livraison', description: 'Toutes les dépenses de tournée (carburant, papiers, crédits, etc.)', icon: Receipt, minRole: 1 },

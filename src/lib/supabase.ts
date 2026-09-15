@@ -49,6 +49,25 @@ export interface Profile {
   phone: string | null;
   avatar_url: string | null;
   is_active: boolean;
+  monthly_salary_fcfa: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type SalaryPaymentMethod = 'especes' | 'mobile_money' | 'virement' | 'cheque' | 'autre';
+
+export interface SalaryPayment {
+  id: string;
+  profile_id: string;
+  period_month: number;
+  period_year: number;
+  gross_amount_fcfa: number;
+  deductions_fcfa: number;
+  net_amount_fcfa: number;
+  payment_method: SalaryPaymentMethod;
+  payment_date: string;
+  notes: string | null;
+  created_by: string;
   created_at: string;
   updated_at: string;
 }
