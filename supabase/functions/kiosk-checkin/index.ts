@@ -5,6 +5,7 @@ type CheckType = "arrival" | "departure";
 type PersonType = "profile" | "driver" | "baker" | "kneader";
 
 const allowedOrigins = new Set([
+  "https://mimsi-distribution.vercel.app",
   "https://mimsi-distribution-ennx.vercel.app",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
@@ -15,7 +16,7 @@ function corsHeaders(req: Request) {
   return {
     "Access-Control-Allow-Origin": origin && allowedOrigins.has(origin)
       ? origin
-      : "https://mimsi-distribution-ennx.vercel.app",
+      : "https://mimsi-distribution.vercel.app",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
   };
