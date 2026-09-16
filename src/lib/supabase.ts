@@ -942,6 +942,7 @@ export interface Supplier {
   email: string | null;
   address: string | null;
   notes: string | null;
+  product_types: string[];
   is_active: boolean;
   created_by: string;
   created_at: string;

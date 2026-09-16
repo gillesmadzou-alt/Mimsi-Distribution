@@ -47,6 +47,7 @@ export default function IngredientsPage({ onNavigate }: { onNavigate?: (page: st
   const [editingSup, setEditingSup] = useState<Supplier | null>(null);
   const [supForm, setSupForm] = useState({
     last_name: '', first_name: '', phone: '', email: '', address: '', notes: '',
+    product_types: [] as string[],
   });
   const [savingSup, setSavingSup] = useState(false);
 
@@ -347,7 +348,7 @@ export default function IngredientsPage({ onNavigate }: { onNavigate?: (page: st
   // Supplier CRUD
   const openCreateSup = () => {
     setEditingSup(null);
-    setSupForm({ last_name: '', first_name: '', phone: '', email: '', address: '', notes: '' });
+    setSupForm({ last_name: '', first_name: '', phone: '', email: '', address: '', notes: '', product_types: [] });
     setShowSupModal(true);
   };
   const openEditSup = (s: Supplier) => {
@@ -356,8 +357,17 @@ export default function IngredientsPage({ onNavigate }: { onNavigate?: (page: st
       last_name: s.last_name, first_name: s.first_name,
       phone: s.phone ?? '', email: s.email ?? '',
       address: s.address ?? '', notes: s.notes ?? '',
+      product_types: s.product_types ?? [],
     });
     setShowSupModal(true);
+  };
+  const toggleSupProductType = (category: string) => {
+    setSupForm((f) => ({
+      ...f,
+      product_types: f.product_types.includes(category)
+        ? f.product_types.filter((c) => c !== category)
+        : [...f.product_types, category],
+    }));
   };
   const handleSupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -369,6 +379,7 @@ export default function IngredientsPage({ onNavigate }: { onNavigate?: (page: st
       email: supForm.email || null,
       address: supForm.address || null,
       notes: supForm.notes || null,
+      product_types: supForm.product_types,
       updated_at: new Date().toISOString(),
     };
     if (editingSup) {
@@ -743,6 +754,13 @@ export default function IngredientsPage({ onNavigate }: { onNavigate?: (page: st
                       <p className="flex items-start gap-1.5"><MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" /> {s.address}</p>
                     )}
                   </div>
+                  {s.product_types && s.product_types.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-gray-50">
+                      {s.product_types.map((pt) => (
+                        <span key={pt} className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-medium">{pt}</span>
+                      ))}
+                    </div>
+                  )}
                   {s.notes && (
                     <p className="text-xs text-gray-400 italic mt-2 pt-2 border-t border-gray-50">« {s.notes} »</p>
                   )}
@@ -1046,6 +1064,26 @@ export default function IngredientsPage({ onNavigate }: { onNavigate?: (page: st
                   rows={2}
                   placeholder="Adresse complète…"
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none resize-none" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Produits livrés</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {INGREDIENT_CATEGORIES.map((category) => (
+                    <button
+                      key={category}
+                      type="button"
+                      onClick={() => toggleSupProductType(category)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                        supForm.product_types.includes(category)
+                          ? 'bg-amber-500 text-white shadow-sm'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {category}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Quel genre de produit ce fournisseur vous livre-t-il ?</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optionnel)</label>
