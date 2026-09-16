@@ -169,7 +169,7 @@ const MANUAL_GROUPS: ManualGroup[] = [
         content: [
           'Etiquetez et suivez les pots par code a barres pour un suivi individuel precis.',
           'Scannez un code a barres avec la camera de votre appareil ou saisissez-le manuellement.',
-          'Chaque pot etiquete est associe a un pétrisseur et peut etre suivi tout au long de la chaine de distribution.',
+          'Chaque pot etiquete est associe a un fournier et peut etre suivi tout au long de la chaine de distribution.',
         ],
       },
     ],
@@ -189,7 +189,7 @@ const MANUAL_GROUPS: ManualGroup[] = [
         id: 'analytics',
         title: 'Analytique',
         content: [
-          'Graphiques avances : ventes detaillees, tresorerie, creances par point de vente, production par pétrisseur.',
+          'Graphiques avances : ventes detaillees, tresorerie, creances par point de vente, production par fournier.',
           'Utilisez les filtres en haut pour affiner l\'analyse par periode ou par categorie.',
         ],
       },
@@ -322,8 +322,8 @@ const MANUAL_GROUPS: ManualGroup[] = [
         id: 'production',
         title: 'pétrisseurs et Production',
         content: [
-          'Enregistrez la production quotidienne de madeleines par pétrisseur : quantite produite, pots utilises, pate utilisee.',
-          'Les petrisseurs livrent la pate aux pétrisseurs. Suivez les livraisons de pate et leur usage.',
+          'Enregistrez la production quotidienne de madeleines par fournier : quantite produite, pots utilises, pate utilisee.',
+          'Les petrisseurs livrent la pate aux fourniers. Suivez les livraisons de pate et leur usage.',
           'Les ecarts de production (casse, brulures) sont enregistres pour le suivi qualite.',
         ],
       },
@@ -341,7 +341,7 @@ const MANUAL_GROUPS: ManualGroup[] = [
         content: [
           'Gerez le stock des matieres premieres (farine, sucre, oeufs, etc.) et les fournisseurs.',
           'Le cout de la pate est calcule automatiquement a partir des ingredients et de leurs prix.',
-          'Les lots de pate sont suivis du petrissage a la livraison chez les pétrisseurs.',
+          'Les lots de pate sont suivis du petrissage a la livraison chez les fourniers.',
         ],
       },
     ],
@@ -369,7 +369,7 @@ const MANUAL_GROUPS: ManualGroup[] = [
         id: 'org-chart',
         title: 'Organigramme',
         content: [
-          'Structure hierarchique du personnel : commerciaux, pétrisseurs, petrisseurs et responsables.',
+          'Structure hierarchique du personnel : commerciaux, fourniers, petrisseurs et responsables.',
         ],
       },
       {
@@ -398,8 +398,8 @@ const MANUAL_GROUPS: ManualGroup[] = [
         id: 'approvals',
         title: 'Approbations personnel',
         content: [
-          'Validez ou refusez les demandes de modification du personnel (ajout, modification, suppression de commerciaux, pétrisseurs, petrisseurs).',
-          'Filtrez par statut (en attente, approuve, refuse) et par categorie (commercial, pétrisseur, petrisseur).',
+          'Validez ou refusez les demandes de modification du personnel (ajout, modification, suppression de commerciaux, fourniers, petrisseurs).',
+          'Filtrez par statut (en attente, approuve, refuse) et par categorie (commercial, fournier, petrisseur).',
         ],
       },
     ],

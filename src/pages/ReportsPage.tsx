@@ -671,7 +671,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
     {
       id: 'production',
       title: 'Rapport de production',
-      description: 'Production de madeleines par pétrisseur',
+      description: 'Production de madeleines par fournier',
       icon: Factory,
       roles: [4, 5, 6, 8],
       build: async () => {
@@ -681,7 +681,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
         return {
           columns: [
             { header: 'Date', key: 'date' },
-            { header: 'Pétrisseur', key: 'baker' },
+            { header: 'Fournier', key: 'baker' },
             { header: 'Type de pot', key: 'pot' },
             { header: 'Pots produits', key: 'produced', align: 'right' as const },
             { header: 'Pots brûlés', key: 'burned', align: 'right' as const },
@@ -905,7 +905,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
             { header: 'Type', key: 'type' },
             { header: 'Article', key: 'item' },
             { header: 'Quantité', key: 'qty', align: 'right' as const },
-            { header: 'commercial/pétrisseur', key: 'person' },
+            { header: 'commercial/fournier', key: 'person' },
             { header: 'Notes', key: 'notes' },
           ],
           rows: filtered.map((m) => ({
@@ -1116,8 +1116,8 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
     },
     {
       id: 'attendance-bakers',
-      title: 'Rapport de présence — pétrisseurs',
-      description: 'Présence des pétrisseurs sur la période',
+      title: 'Rapport de présence — fourniers',
+      description: 'Présence des fourniers sur la période',
       icon: UserCheck,
       roles: [4, 5, 6, 8],
       build: async () => buildAttendanceReport(attendanceRecords, 'baker', fromDate, toDate, attPerson),
@@ -1456,7 +1456,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
             <select value={attPersonType} onChange={(e) => { setAttPersonType(e.target.value); setAttPerson('all'); }}
               className="px-3 py-2 rounded-xl border border-gray-200 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none bg-white">
               <option value="all">Tous</option>
-              <option value="baker">Boulangers</option>
+              <option value="baker">Fourniers</option>
               <option value="driver">Commerciaux</option>
               <option value="kneader">Pétrisseurs</option>
               <option value="admin">Administration</option>

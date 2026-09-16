@@ -780,7 +780,7 @@ export default function BatchesPage() {
 
     setScannedBarcodes((prev) => [...prev, { code, barcode: barcode as BarcodeType }]);
     if (barcode.production_record) {
-      toast(`Lot identifié : ${barcode.production_record.pot_type?.name ?? barcode.pot_type?.name ?? 'pot'} produit par ${barcode.production_record.baker?.full_name ?? 'pétrisseur inconnu'} le ${new Date(barcode.production_record.production_date).toLocaleDateString('fr-FR')}.`, 'success');
+      toast(`Lot identifié : ${barcode.production_record.pot_type?.name ?? barcode.pot_type?.name ?? 'pot'} produit par ${barcode.production_record.baker?.full_name ?? 'fournier inconnu'} le ${new Date(barcode.production_record.production_date).toLocaleDateString('fr-FR')}.`, 'success');
     }
     if (scanTarget == null) {
       setDepositForm((prev) => ({ ...prev, quantity: prev.quantity + 1 }));

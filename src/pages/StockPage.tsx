@@ -487,10 +487,10 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
 
               {showBakerField && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">pétrisseur (entrée de stock)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">fournier (entrée de stock)</label>
                   <select value={movement.baker_id} onChange={(e) => setMovement({ ...movement, baker_id: e.target.value })}
                     className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none">
-                    <option value="">— Désigner le pétrisseur —</option>
+                    <option value="">— Désigner le fournier —</option>
                     {bakers.map((b) => <option key={b.id} value={b.id}>{b.full_name}</option>)}
                   </select>
                 </div>
@@ -577,7 +577,7 @@ export default function StockPage({ onNavigate }: { onNavigate?: (page: string) 
                         </p>
                         <p className="text-xs text-gray-500">
                           {formatBrazzavilleDateTime(m.created_at)}
-                          {personLabel && ` · ${m.driver ? 'Commercial' : 'Pétrisseur'}: ${personLabel}`}
+                          {personLabel && ` · ${m.driver ? 'Commercial' : 'Fournier'}: ${personLabel}`}
                           {m.batch && ` · Lot : ${m.batch.batch_code}`}
                           {m.notes ? ` · ${m.notes}` : ''}
                         </p>

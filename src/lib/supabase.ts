@@ -16,13 +16,13 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   6: 'Administrateur',
   7: 'Directrice commerciale',
   8: 'Responsable de production',
-  9: 'Pétrisseur',
+  9: 'Fournier',
   10: 'Commercial',
   11: 'Commercial externe',
   12: 'Agent de sécurité',
   13: 'Plongeuse',
   14: 'Femme de ménage',
-  15: 'Fournier',
+  15: 'Pétrisseur',
   16: 'Assistant en gestion de stock',
 };
 
@@ -730,7 +730,7 @@ export type ScheduleStatus = 'planifie' | 'en_cours' | 'termine' | 'annule';
 
 export const SCHEDULE_PERSON_LABELS: Record<SchedulePersonType, string> = {
   driver: 'Commercial',
-  baker: 'Pétrisseur',
+  baker: 'Fournier',
   kneader: 'Pétrisseur',
   profile: 'Autre personnel',
 };

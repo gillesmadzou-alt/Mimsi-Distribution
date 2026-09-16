@@ -147,7 +147,7 @@ export default function ConsignmentsPage({ onNavigate }: { onNavigate?: (page: s
           {potTypes.map((pot) => <option key={pot.id} value={pot.id}>{pot.name}</option>)}
         </select>
         <select value={filters.baker} onChange={(e) => setFilters({ ...filters, baker: e.target.value })} className="px-3 py-2 rounded-xl border border-gray-200 text-sm">
-          <option value="all">Tous les pétrisseurs</option>
+          <option value="all">Tous les fourniers</option>
           {bakers.map((baker) => <option key={baker.id} value={baker.id}>{baker.full_name}</option>)}
         </select>
         <select value={filters.driver} onChange={(e) => setFilters({ ...filters, driver: e.target.value })} className="px-3 py-2 rounded-xl border border-gray-200 text-sm">
@@ -276,7 +276,7 @@ export default function ConsignmentsPage({ onNavigate }: { onNavigate?: (page: s
                 <select required disabled={!form.pot_type_id} value={form.production_record_id} onChange={(e) => setForm({ ...form, production_record_id: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none disabled:bg-gray-50">
                   <option value="">— Choisir une production —</option>
-                  {availableProductionRecords.map((record) => <option key={record.id} value={record.id}>{record.baker?.full_name ?? 'Pétrisseur'} · {new Date(record.production_date).toLocaleDateString('fr-FR')} · {record.quantity} pots</option>)}
+                  {availableProductionRecords.map((record) => <option key={record.id} value={record.id}>{record.baker?.full_name ?? 'Fournier'} · {new Date(record.production_date).toLocaleDateString('fr-FR')} · {record.quantity} pots</option>)}
                 </select>
                 <p className="mt-1 text-xs text-gray-400">Seules les productions du type de pot choisi sont proposées.</p>
               </div>
