@@ -47,7 +47,7 @@ const ENTITY_MAP: Record<string, EntityMeta> = {
   receivable: { label: 'Créance', icon: Wallet, page: 'receivables' },
   compliance: { label: 'Conformité', icon: ShieldCheck, page: 'compliance' },
   leave: { label: 'Congé & Absence', icon: CalendarOff, page: 'leave' },
-  baker: { label: 'Fournier', icon: ChefHat, page: 'production' },
+  baker: { label: 'Pétrisseur', icon: ChefHat, page: 'production' },
   kneader: { label: 'Pétrisseur', icon: Wheat, page: 'production' },
   production_record: { label: 'Enregistrement de production', icon: ChefHat, page: 'production' },
   dough_delivery: { label: 'Livraison de pâte', icon: Wheat, page: 'production' },

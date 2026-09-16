@@ -614,7 +614,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
               setForm({ ...form, productionRecordId: e.target.value, potTypeId: record?.pot_type_id ?? form.potTypeId, baker1Id: record?.baker_id ?? form.baker1Id, quantity: record?.quantity ?? form.quantity });
             }} className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none">
               <option value="">— Code par pot (mode existant) —</option>
-              {productionRecords.map((record) => <option key={record.id} value={record.id}>{new Date(record.production_date).toLocaleDateString('fr-FR')} · {record.pot_type?.name ?? 'Pot'} · {record.baker?.full_name ?? 'Fournier'} · {record.quantity} pots</option>)}
+              {productionRecords.map((record) => <option key={record.id} value={record.id}>{new Date(record.production_date).toLocaleDateString('fr-FR')} · {record.pot_type?.name ?? 'Pot'} · {record.baker?.full_name ?? 'Pétrisseur'} · {record.quantity} pots</option>)}
             </select>
             <p className="mt-1 text-xs text-gray-400">Un code de lot unique est créé pour une production sélectionnée.</p>
           </div>
@@ -753,7 +753,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
                 <canvas ref={(el) => { canvasRefs.current[b.id] = el; }} className="w-full" />
                 <div className="text-xs text-gray-500 font-mono text-center break-all">{b.code}</div>
                 <div className="text-xs text-gray-400">{b.pot_type?.name ?? '—'}</div>
-                {b.production_record && <div className="text-xs text-emerald-700 text-center">Lot · {b.production_record.baker?.full_name ?? 'Fournier'}</div>}
+                {b.production_record && <div className="text-xs text-emerald-700 text-center">Lot · {b.production_record.baker?.full_name ?? 'Pétrisseur'}</div>}
                 <button
                   onClick={() => deleteBarcode(b.id)}
                   className="text-red-400 hover:text-red-600 text-xs flex items-center gap-1"

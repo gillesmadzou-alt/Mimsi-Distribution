@@ -29,7 +29,7 @@ interface TimelineItem {
 
 const CATEGORY_LABELS: Record<string, string> = {
   pate: 'Pate & Petrisseur',
-  production: 'Production (fournier)',
+  production: 'Production (pétrisseur)',
   stock_in: 'Entree en stock',
   stock_out: 'Sortie de stock',
   livraison: 'Livraison',
@@ -312,7 +312,7 @@ export default function JournalPage({ onNavigate }: { onNavigate?: (page: string
         id: 'sm-' + m.id,
         timestamp: m.created_at,
         title: (mvTypeLabel[m.movement_type] ?? m.movement_type) + ' - ' + m.quantity + ' ' + (m.pot_type?.name ?? ''),
-        subtitle: personLabel ? (m.driver ? 'Commercial: ' : 'Fournier: ') + personLabel : (m.notes ?? '-'),
+        subtitle: personLabel ? (m.driver ? 'Commercial: ' : 'pétrisseur: ') + personLabel : (m.notes ?? '-'),
         label: m.notes ?? '',
         icon: isEntree ? Archive : ArrowUpCircle,
         color: isEntree ? 'text-emerald-600' : 'text-orange-600',
@@ -372,7 +372,7 @@ export default function JournalPage({ onNavigate }: { onNavigate?: (page: string
 
     downloadPdfReport({
       title: 'Journal de livraison',
-      subtitle: `Periode: ${periodLabel} | Commercial: ${driverName} | Petrisseur: ${kneaderName} | Fournier: ${bakerName}`,
+      subtitle: `Periode: ${periodLabel} | Commercial: ${driverName} | Petrisseur: ${kneaderName} | pétrisseur: ${bakerName}`,
       columns: [
         { header: 'Date', key: 'date' },
         { header: 'Type', key: 'type' },
@@ -427,7 +427,7 @@ export default function JournalPage({ onNavigate }: { onNavigate?: (page: string
             onChange={setKneaderFilter}
           />
           <PersonDropdown
-            label="Fournier"
+            label="Pétrisseur"
             allLabel="Tous les fours"
             people={bakers}
             value={bakerFilter}

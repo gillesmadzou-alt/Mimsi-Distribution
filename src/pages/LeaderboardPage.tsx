@@ -217,7 +217,7 @@ export default function LeaderboardPage({ onNavigate }: { onNavigate?: (page: st
   }
 
   function handleExportPdf() {
-    const catLabel = category === 'drivers' ? 'Commerciaux' : category === 'kneaders' ? 'Pétrisseurs' : 'Fourniers';
+    const catLabel = category === 'drivers' ? 'Commerciaux' : category === 'kneaders' ? 'Pétrisseurs' : 'pétrisseurs';
     const title = `Classement des ${catLabel}`;
     const subtitle = `Période : ${label}`;
 
@@ -273,7 +273,7 @@ export default function LeaderboardPage({ onNavigate }: { onNavigate?: (page: st
       });
     } else {
       downloadPdfReport({
-        title, subtitle, fileName: `classement-fourniers-${Date.now()}`,
+        title, subtitle, fileName: `classement-pétrisseurs-${Date.now()}`,
         columns: [
           { header: 'Rang', key: 'rank', align: 'center' as const },
           { header: 'Nom', key: 'name' },
@@ -312,7 +312,7 @@ export default function LeaderboardPage({ onNavigate }: { onNavigate?: (page: st
   const categoryTabs: { id: Category; label: string; icon: typeof Truck }[] = [
     { id: 'drivers', label: 'Commerciaux', icon: Truck },
     { id: 'kneaders', label: 'Pétrisseurs', icon: Wheat },
-    { id: 'bakers', label: 'Fourniers', icon: Flame },
+    { id: 'bakers', label: 'Pétrisseurs', icon: Flame },
   ];
 
   return (
@@ -362,7 +362,7 @@ export default function LeaderboardPage({ onNavigate }: { onNavigate?: (page: st
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100">
               <h3 className="font-semibold text-gray-900">
-                Classement {category === 'drivers' ? 'des commerciaux' : category === 'kneaders' ? 'des pétrisseurs' : 'des fourniers'}
+                Classement {category === 'drivers' ? 'des commerciaux' : category === 'kneaders' ? 'des pétrisseurs' : 'des pétrisseurs'}
               </h3>
             </div>
             <div className="divide-y divide-gray-50">
@@ -502,7 +502,7 @@ function PersonDetailDrawer({ person, category, periodLabel, onClose }: {
             <div>
               <h3 className="font-bold text-lg">{name}</h3>
               <p className="text-sm text-white/80">
-                {category === 'drivers' ? 'Commercial' : category === 'kneaders' ? 'Pétrisseur' : 'Fournier'} · Rang #{person.rank}
+                {category === 'drivers' ? 'Commercial' : category === 'kneaders' ? 'Pétrisseur' : 'Pétrisseur'} · Rang #{person.rank}
               </p>
             </div>
           </div>

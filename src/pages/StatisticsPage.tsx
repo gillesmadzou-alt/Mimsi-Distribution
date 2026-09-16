@@ -243,7 +243,7 @@ export default function StatisticsPage({ onNavigate }: { onNavigate?: (page: str
         { label: 'Période', value: periodLabel },
         { label: 'Commercial', value: driverLabel },
         { label: 'Pétrisseur', value: kneaderLabel },
-        { label: 'Fournier', value: bakerLabel },
+        { label: 'Pétrisseur', value: bakerLabel },
         { label: 'Type', value: potLabel },
       ],
       fileName: 'statistiques',
@@ -273,7 +273,7 @@ export default function StatisticsPage({ onNavigate }: { onNavigate?: (page: str
         { label: 'Période', value: periodLabel },
         { label: 'Commercial', value: driverLabel },
         { label: 'Pétrisseur', value: kneaderLabel },
-        { label: 'Fournier', value: bakerLabel },
+        { label: 'Pétrisseur', value: bakerLabel },
         { label: 'CA total', value: formatFCFA(stats.revenue) },
       ],
       fileName: 'statistiques',
@@ -458,7 +458,7 @@ export default function StatisticsPage({ onNavigate }: { onNavigate?: (page: str
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
           <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <Cookie className="w-5 h-5 text-orange-500" />
-            Performance par fournier
+            Performance par pétrisseur
             <button onClick={() => onNavigate?.('production')} className="ml-auto text-xs text-blue-600 hover:underline font-medium">Voir détail</button>
           </h3>
           {stats.bakerStats.length === 0 ? (

@@ -14,8 +14,8 @@ import {
 type Tab = 'discrepancies' | 'financial' | 'registry';
 
 const STAGE_CONFIG: Record<string, { label: string; Icon: typeof Beaker; color: string }> = {
-  pate_production:  { label: 'Pétrisseur → Fournier',    Icon: Beaker,   color: 'text-blue-600 bg-blue-50' },
-  production_stock: { label: 'Fournier → Stock',          Icon: ChefHat,  color: 'text-amber-600 bg-amber-50' },
+  pate_production:  { label: 'Pétrisseur → pétrisseur',    Icon: Beaker,   color: 'text-blue-600 bg-blue-50' },
+  production_stock: { label: 'pétrisseur → Stock',          Icon: ChefHat,  color: 'text-amber-600 bg-amber-50' },
   stock_livraison:  { label: 'Stock → Livraison',        Icon: Truck,    color: 'text-purple-600 bg-purple-50' },
   poids_seau:       { label: 'Poids de seau (12,8 kg)',   Icon: Scale,    color: 'text-red-600 bg-red-50' },
 };

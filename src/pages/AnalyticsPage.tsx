@@ -575,7 +575,7 @@ export default function AnalyticsPage({ onNavigate }: { onNavigate?: (page: stri
         { label: 'Période', value: periodLabel },
         { label: 'Onglet', value: tabLabel },
         { label: 'Commercial', value: driverLabel },
-        { label: 'Fournier', value: bakerLabel },
+        { label: 'Pétrisseur', value: bakerLabel },
         { label: 'Pétrisseur', value: kneaderLabel },
       ],
       fileName: `analytique-${activeTab}`,
@@ -588,7 +588,7 @@ export default function AnalyticsPage({ onNavigate }: { onNavigate?: (page: stri
       { label: 'Période', value: periodLabel },
       { label: 'Onglet', value: tabLabel },
       { label: 'Commercial', value: driverLabel },
-      { label: 'Fournier', value: bakerLabel },
+      { label: 'Pétrisseur', value: bakerLabel },
       { label: 'Pétrisseur', value: kneaderLabel },
       { label: 'CA total', value: formatFCFA(totalRevenue) },
       { label: 'Trésorerie nette', value: formatFCFA(netCash) },
@@ -1115,7 +1115,7 @@ export default function AnalyticsPage({ onNavigate }: { onNavigate?: (page: stri
             </ChartCard>
           </div>
 
-          <ChartCard title="Performance par fournier" subtitle="Madeleines bonnes et pots produits" icon={Factory}>
+          <ChartCard title="Performance par pétrisseur" subtitle="Madeleines bonnes et pots produits" icon={Factory}>
             {bakerPerformance.length === 0 ? (
               <EmptyState text="Aucune production sur la période" />
             ) : (

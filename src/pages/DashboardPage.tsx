@@ -686,10 +686,10 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
 
         {entityFilter === 'fournier' && raw && (
           <div>
-            <p className="text-xs text-gray-500 mb-2">Fournier</p>
+            <p className="text-xs text-gray-500 mb-2">pétrisseur</p>
             <select value={selectedBaker} onChange={(e) => setSelectedBaker(e.target.value)}
               className="w-full sm:w-80 px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none text-sm">
-              <option value="all">Tous les fourniers</option>
+              <option value="all">Tous les pétrisseurs</option>
               {raw.bakers.map((b) => (
                 <option key={b.id} value={b.id}>{b.full_name}</option>
               ))}
