@@ -165,7 +165,7 @@ const MANUAL_GROUPS: ManualGroup[] = [
       },
       {
         id: 'barcodes',
-        title: 'Codes a barres',
+        title: 'Codes & étiquettes',
         content: [
           'Etiquetez et suivez les pots par code a barres pour un suivi individuel precis.',
           'Scannez un code a barres avec la camera de votre appareil ou saisissez-le manuellement.',

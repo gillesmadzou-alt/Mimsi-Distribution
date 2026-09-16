@@ -53,7 +53,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: 'batches', label: 'Tournées du jour', description: 'Lots de livraison en cours par commercial', icon: Route, minRole: 1 },
       { id: 'map', label: 'Carte interactive', description: 'Localisation des points de vente sur la carte', icon: Map, minRole: 1 },
       { id: 'returns', label: 'Retours & Invendus', description: 'Pots et madeleines ramenés par les commerciaux', icon: Undo2, minRole: 2 },
-      { id: 'barcodes', label: 'Codes à barres', description: 'Étiquetage et suivi des pots par code à barres', icon: Barcode, minRole: 2 },
+      { id: 'barcodes', label: 'Codes & étiquettes', description: 'Étiquetage et suivi des pots par code à barres', icon: Barcode, minRole: 2 },
     ],
   },
   {
