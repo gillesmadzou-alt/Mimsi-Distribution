@@ -4,7 +4,7 @@ import {
   supabase, ROLE_LABELS, formatFCFA, UserRole, Profile,
   Driver, SalesPoint, DeliveryBatch, Deposit, Return, ProductionRecord,
   Receivable, StockMovement, Ingredient, DoughBatch,
-  AttendanceRecord, QuotaPayment, PotType, AccountingEntry,
+  AttendanceRecord, QuotaPayment, PotType, AccountingEntry, SalaryPayment,
 } from '@/lib/supabase';
 import { brazzavilleToday, formatBrazzavilleDate } from '@/lib/brazzavilleTime';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
@@ -48,6 +48,19 @@ const BAKER_ROLES: UserRole[] = [9];
 const KNEADER_TYPE = 'kneader';
 const ADMIN_ROLES: UserRole[] = [4, 5, 6, 7, 8];
 const OTHER_ROLES: UserRole[] = [2, 3, 12, 13, 14];
+
+const SALARY_PAYMENT_METHOD_LABELS: Record<string, string> = {
+  especes: 'Espèces',
+  mobile_money: 'Mobile Money',
+  virement: 'Virement',
+  cheque: 'Chèque',
+  autre: 'Autre',
+};
+
+const MONTH_LABELS = [
+  'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+];
 
 interface EquipmentAsset {
   id: string; name: string; asset_type: 'materiel' | 'outil'; quantity: number;
@@ -188,6 +201,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
   const [equipmentAssets, setEquipmentAssets] = useState<EquipmentAsset[]>([]);
   const [inventorySessions, setInventorySessions] = useState<InventorySession[]>([]);
   const [accountingEntries, setAccountingEntries] = useState<AccountingEntry[]>([]);
+  const [salaryPayments, setSalaryPayments] = useState<SalaryPayment[]>([]);
 
   const { fetchWithCache, isOffline } = useOfflineFetch();
 
@@ -213,7 +227,7 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
   const loadData = useCallback(async () => {
     setLoading(true);
     const result = await fetchWithCache('reports-page-v100', async () => {
-      const [b, dep, ret, recv, prod, stock, ing, db, dr, sp, pr, att, qp, pots, equipment, inventories, accounts] = await Promise.all([
+      const [b, dep, ret, recv, prod, stock, ing, db, dr, sp, pr, att, qp, pots, equipment, inventories, accounts, salaries] = await Promise.all([
         supabase.from('delivery_batches').select('*, driver:drivers(*), pot_type:pot_types(*)').order('batch_date', { ascending: false }).limit(500),
         supabase.from('deposits').select('*, sales_point:sales_points(*), batch:delivery_batches(*)').order('deposited_at', { ascending: false }).limit(500),
         supabase.from('returns').select('*, sales_point:sales_points(*), batch:delivery_batches(*)').order('returned_at', { ascending: false }).limit(500),
@@ -231,11 +245,12 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
         supabase.from('equipment_assets').select('*').eq('is_active', true).order('asset_type').order('name'),
         supabase.from('inventory_sessions').select('*, lines:inventory_session_lines(*, pot_type:pot_types(name), ingredient:ingredients(name))').order('inventory_date', { ascending: false }).limit(100),
         supabase.from('accounting_entries').select('*').order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(2000),
+        supabase.from('salary_payments').select('*').order('payment_date', { ascending: false }).limit(2000),
       ]);
-      return { b, dep, ret, recv, prod, stock, ing, db, dr, sp, pr, att, qp, pots, equipment, inventories, accounts };
+      return { b, dep, ret, recv, prod, stock, ing, db, dr, sp, pr, att, qp, pots, equipment, inventories, accounts, salaries };
     });
     if (result.data) {
-      const { b, dep, ret, recv, prod, stock, ing, db, dr, sp, pr, att, qp, pots, equipment, inventories, accounts } = result.data;
+      const { b, dep, ret, recv, prod, stock, ing, db, dr, sp, pr, att, qp, pots, equipment, inventories, accounts, salaries } = result.data;
       setAttendanceRecords(att.data ?? []);
       setBatches(b.data ?? []);
       setDeposits(dep.data ?? []);
@@ -253,13 +268,14 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
       setEquipmentAssets((equipment.data ?? []) as EquipmentAsset[]);
       setInventorySessions((inventories.data ?? []) as InventorySession[]);
       setAccountingEntries((accounts?.data ?? []) as AccountingEntry[]);
+      setSalaryPayments((salaries?.data ?? []) as SalaryPayment[]);
     }
     setLoading(false);
   }, [fetchWithCache]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  useRealtimeSubscription('reports-page', isOffline ? [] : ['delivery_batches', 'deposits', 'returns', 'receivables', 'receivable_payments', 'accounting_entries', 'production_records', 'stock_movements', 'ingredients', 'dough_batches', 'sales_points', 'quota_payments', 'pot_types', 'equipment_assets', 'inventory_sessions', 'inventory_session_lines'], () => { loadData(); });
+  useRealtimeSubscription('reports-page', isOffline ? [] : ['delivery_batches', 'deposits', 'returns', 'receivables', 'receivable_payments', 'accounting_entries', 'production_records', 'stock_movements', 'ingredients', 'dough_batches', 'sales_points', 'quota_payments', 'pot_types', 'equipment_assets', 'inventory_sessions', 'inventory_session_lines', 'salary_payments'], () => { loadData(); });
 
   const inRange = (dateStr: string) => {
     const d = dateStr.slice(0, 10);
@@ -1012,6 +1028,51 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
             { label: 'Total personnel', value: String(profiles.length) },
             { label: 'Personnel actif', value: String(profiles.filter((p) => p.is_active).length) },
           ],
+        };
+      },
+    },
+    {
+      id: 'payroll',
+      title: 'Fiches de paie',
+      description: 'Salaires versés au personnel sur la période',
+      icon: Wallet,
+      roles: [3, 4, 5, 6],
+      build: async () => {
+        const profileNameById = new Map(profiles.map((p) => [p.id, p.full_name]));
+        const entryIdBySalaryId = new Map(
+          accountingEntries.filter((e) => e.source_table === 'salary_payments' && e.source_id).map((e) => [e.source_id as string, e.id]),
+        );
+        const filtered = salaryPayments
+          .filter((s) => inRange(s.payment_date))
+          .sort((a, b) => b.payment_date.localeCompare(a.payment_date));
+        return {
+          columns: [
+            { header: 'Employé', key: 'employee' },
+            { header: 'Période', key: 'period' },
+            { header: 'Date de paiement', key: 'paymentDate' },
+            { header: 'Brut', key: 'gross', align: 'right' as const },
+            { header: 'Déductions', key: 'deductions', align: 'right' as const },
+            { header: 'Net versé', key: 'net', align: 'right' as const },
+            { header: 'Méthode', key: 'method' },
+            { header: 'Notes', key: 'notes' },
+          ],
+          rows: filtered.map((s) => ({
+            employee: profileNameById.get(s.profile_id) ?? 'Employé inconnu',
+            period: `${MONTH_LABELS[s.period_month - 1] ?? s.period_month} ${s.period_year}`,
+            paymentDate: fmtDate(s.payment_date),
+            gross: formatFCFA(s.gross_amount_fcfa),
+            deductions: formatFCFA(s.deductions_fcfa),
+            net: formatFCFA(s.net_amount_fcfa),
+            method: SALARY_PAYMENT_METHOD_LABELS[s.payment_method] ?? s.payment_method,
+            notes: s.notes ?? '—',
+          })),
+          summary: [
+            { label: 'Fiches de paie', value: String(filtered.length) },
+            { label: 'Total brut versé', value: formatFCFA(filtered.reduce((sum, s) => sum + Number(s.gross_amount_fcfa), 0)) },
+            { label: 'Total net versé', value: formatFCFA(filtered.reduce((sum, s) => sum + Number(s.net_amount_fcfa), 0)) },
+            { label: 'Période', value: `${fmtDate(fromDate)} — ${fmtDate(toDate)}` },
+          ],
+          entryIds: filtered.map((s) => entryIdBySalaryId.get(s.id)).filter((id): id is string => Boolean(id)),
         };
       },
     },

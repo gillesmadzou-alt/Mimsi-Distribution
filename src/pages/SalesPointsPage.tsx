@@ -507,6 +507,19 @@ export default function SalesPointsPage({ onNavigate }: { onNavigate?: (page: st
         )}
       </div>
 
+      {/* Selected driver summary */}
+      {filterDriver && (
+        <div className="flex items-center justify-between gap-3 bg-violet-50 border border-violet-200 rounded-xl px-4 py-3">
+          <span className="flex items-center gap-2 text-sm font-medium text-violet-800">
+            <UserIcon className="w-4 h-4" />
+            {filterDriver === UNASSIGNED_DRIVER_FILTER ? 'Sans commercial' : driverNameById.get(filterDriver) ?? 'Commercial'}
+          </span>
+          <span className="text-sm font-semibold text-violet-900">
+            {filtered.length} point{filtered.length > 1 ? 's' : ''} de vente
+          </span>
+        </div>
+      )}
+
       {/* List */}
       {loading ? (
         loadError ? (
