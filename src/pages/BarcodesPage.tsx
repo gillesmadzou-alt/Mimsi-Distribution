@@ -15,13 +15,6 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 export const LINEAR_BARCODE_FORMATS = ['CODE128', 'EAN13', 'EAN8', 'CODE39', 'UPC'] as const;
 export type LinearBarcodeFormat = (typeof LINEAR_BARCODE_FORMATS)[number];
 
-// Les codes "classiques" sont alphanumériques (ex. POT-ABC123-001) : seuls
-// CODE128 et CODE39 acceptent ce genre de contenu. EAN13/EAN8/UPC exigent un
-// nombre fixe de chiffres et échouaient silencieusement ici — ils sont
-// réservés à l'onglet "Codes à barres institutionnels", qui génère déjà des
-// codes numériques conformes.
-const CLASSIQUE_BARCODE_FORMATS = ['CODE128', 'CODE39'] as const satisfies readonly LinearBarcodeFormat[];
-
 function drawBarcodeOnCanvas(canvas: HTMLCanvasElement, text: string, format: LinearBarcodeFormat = 'CODE128'): void {
   try {
     JsBarcode(canvas, text, {
@@ -141,6 +134,15 @@ function generateEAN13(potIndex: number, sequence: number): string {
   return base12 + String(ean13CheckDigit(base12));
 }
 
+// CODE128/CODE39 acceptent du texte alphanumérique : contrairement à
+// generateEAN13, pas de longueur ou de chiffre de contrôle imposés.
+function generateInstitutionnelCode(format: LinearBarcodeFormat, potIndex: number, sequence: number): string {
+  if (format === 'EAN13') return generateEAN13(potIndex, sequence);
+  const potCode = String(potIndex % 100).padStart(2, '0');
+  const seq = String(sequence % 100000).padStart(5, '0');
+  return `INST-${potCode}-${seq}`;
+}
+
 export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: string) => void }) {
   const { offlineMode, manualOffline } = useAuth();
   const { isOnline: online } = useSync();
@@ -153,7 +155,10 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
   const [exportingPdf, setExportingPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [labelWidthMm, setLabelWidthMm] = useState(85);
-  const [barcodeFormat, setBarcodeFormat] = useState<LinearBarcodeFormat>('CODE128');
+  const [labelHeightMm, setLabelHeightMm] = useState(107);
+  // Fixe : le choix du format (CODE128, CODE39, EAN13…) se fait désormais
+  // uniquement dans l'onglet "Codes à barres institutionnels".
+  const barcodeFormat: LinearBarcodeFormat = 'CODE128';
   const [generating, setGenerating] = useState(false);
   const [form, setForm] = useState({ potTypeId: '', quantity: 1, notes: '', baker1Id: '', baker2Id: '', productionRecordId: '' });
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -173,13 +178,16 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
   const [etDate, setEtDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [etQuantity, setEtQuantity] = useState(1);
   const [etLabelWidthMm, setEtLabelWidthMm] = useState(85);
+  const [etLabelHeightMm, setEtLabelHeightMm] = useState(107);
   const [etLabels, setEtLabels] = useState<{ name: string; price: string; date: string }[]>([]);
   const [etExporting, setEtExporting] = useState(false);
   const [etError, setEtError] = useState<string | null>(null);
   const [smPotTypeId, setSmPotTypeId] = useState('');
+  const [smFormat, setSmFormat] = useState<LinearBarcodeFormat>('EAN13');
   const [smQuantity, setSmQuantity] = useState(1);
   const [smStartSeq, setSmStartSeq] = useState(1);
   const [smLabelWidthMm, setSmLabelWidthMm] = useState(85);
+  const [smLabelHeightMm, setSmLabelHeightMm] = useState(107);
   const [smCodes, setSmCodes] = useState<{ code: string; potTypeName: string }[]>([]);
   const [smExporting, setSmExporting] = useState(false);
   const [smError, setSmError] = useState<string | null>(null);
@@ -188,9 +196,9 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
   useEffect(() => {
     smCodes.forEach(({ code }) => {
       const canvas = smCanvasRefs.current[code];
-      if (canvas) drawBarcodeOnCanvas(canvas, code, 'EAN13');
+      if (canvas) drawBarcodeOnCanvas(canvas, code, smFormat);
     });
-  }, [smCodes]);
+  }, [smCodes, smFormat]);
 
   const generateEtiquettes = (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,9 +221,9 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const margin = 10;
       const labelWidth = etLabelWidthMm;
+      const labelHeight = Math.max(etLabelWidthMm + 10, etLabelHeightMm);
       const artworkHeight = labelWidth;
-      const variablePanelHeight = 22;
-      const labelHeight = artworkHeight + variablePanelHeight;
+      const variablePanelHeight = labelHeight - artworkHeight;
       const gapX = 5;
       const gapY = 6;
       const headerOffset = 10;
@@ -295,7 +303,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
     const potIndex = potTypes.findIndex((p) => p.id === smPotTypeId) + 1;
     const potType = potTypes.find((p) => p.id === smPotTypeId);
     const codes = Array.from({ length: smQuantity }, (_, i) => ({
-      code: generateEAN13(potIndex, smStartSeq + i),
+      code: generateInstitutionnelCode(smFormat, potIndex, smStartSeq + i),
       potTypeName: potType?.name ?? '—',
     }));
     setSmCodes(codes);
@@ -311,9 +319,9 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const margin = 10;
       const labelWidth = smLabelWidthMm;
+      const labelHeight = Math.max(smLabelWidthMm + 10, smLabelHeightMm);
       const artworkHeight = labelWidth;
-      const variablePanelHeight = 22;
-      const labelHeight = artworkHeight + variablePanelHeight;
+      const variablePanelHeight = labelHeight - artworkHeight;
       const gapX = 5;
       const gapY = 6;
       const headerOffset = 10;
@@ -360,7 +368,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
 
         const barcodeCanvas = document.createElement('canvas');
         JsBarcode(barcodeCanvas, code, {
-          format: 'EAN13',
+          format: smFormat,
           displayValue: false,
           height: 60,
           width: 2,
@@ -573,9 +581,10 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
       const labelWidth = labelWidthMm;
       // L'artwork de l'étiquette est carré à l'origine (85x85) : on garde ce
       // ratio 1:1 quelle que soit la largeur choisie pour ne pas le déformer.
+      // La longueur totale (largeur + bandeau texte) reste réglable séparément.
+      const labelHeight = Math.max(labelWidthMm + 10, labelHeightMm);
       const artworkHeight = labelWidth;
-      const variablePanelHeight = 22;
-      const labelHeight = artworkHeight + variablePanelHeight;
+      const variablePanelHeight = labelHeight - artworkHeight;
       const gapX = 5;
       const gapY = 6;
       const headerOffset = 10;
@@ -745,6 +754,12 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
             <input type="number" min="40" max="120" value={etLabelWidthMm} onChange={(e) => setEtLabelWidthMm(Number(e.target.value))}
               className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none" />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Longueur d'étiquette (mm)</label>
+            <input type="number" min="50" max="150" value={etLabelHeightMm} onChange={(e) => setEtLabelHeightMm(Number(e.target.value))}
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none" />
+            <p className="mt-1 text-xs text-gray-400">Dimension réelle imprimée sur A4 (largeur × longueur).</p>
+          </div>
           <div className="md:col-span-4">
             <button type="submit"
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-md hover:shadow-lg transition-all">
@@ -881,8 +896,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
       </div>
 
       {available.length > 0 && (() => {
-        const artworkH = labelWidthMm;
-        const labelH = artworkH + 22;
+        const labelH = Math.max(labelWidthMm + 10, labelHeightMm);
         const colsPreview = Math.max(1, Math.floor((210 - 2 * 10 + 5) / (labelWidthMm + 5)));
         const rowsPreview = Math.max(1, Math.floor((297 - 10 - 10 - 10 + 6) / (labelH + 6)));
         const perSheet = colsPreview * rowsPreview;
@@ -902,14 +916,15 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Type de code à barres</label>
-              <select
-                value={barcodeFormat}
-                onChange={(e) => setBarcodeFormat(e.target.value as LinearBarcodeFormat)}
-                className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-amber-500 outline-none bg-white"
-              >
-                {CLASSIQUE_BARCODE_FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}
-              </select>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Longueur étiquette (mm)</label>
+              <input
+                type="number"
+                min={40}
+                max={150}
+                value={labelHeightMm}
+                onChange={(e) => setLabelHeightMm(Math.min(150, Math.max(40, parseInt(e.target.value) || 107)))}
+                className="w-28 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-amber-500 outline-none"
+              />
             </div>
             <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
               <span className="font-medium text-gray-900">{perSheet}</span> étiquette{perSheet > 1 ? 's' : ''} / feuille A4
@@ -1044,11 +1059,11 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
               </div>
               <div>
                 <h3 className="font-bold text-gray-900 text-lg">Codes à barres institutionnels</h3>
-                <p className="text-sm text-gray-500">Codes EAN-13 institutionnels, générés à la volée — pas liés au stock/production</p>
+                <p className="text-sm text-gray-500">Codes générés à la volée — pas liés au stock/production</p>
               </div>
             </div>
 
-            <form onSubmit={generateSupermarche} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+            <form onSubmit={generateSupermarche} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Type de pot</label>
                 <select
@@ -1061,6 +1076,16 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
                   {potTypes.map((p) => (
                     <option key={p.id} value={p.id}>{p.name} ({formatFCFA(p.unit_price_fcfa)})</option>
                   ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type de code à barres</label>
+                <select
+                  value={smFormat}
+                  onChange={(e) => setSmFormat(e.target.value as LinearBarcodeFormat)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none bg-white"
+                >
+                  {LINEAR_BARCODE_FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}
                 </select>
               </div>
               <div>
@@ -1092,13 +1117,15 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
               </button>
             </form>
             <p className="mt-3 text-xs text-gray-400">
-              Format EAN-13, préfixe 20 (plage GS1 réservée à l'usage interne/institutionnel) — pas besoin d'enregistrement GS1. Ces codes ne sont pas enregistrés en base : ils servent uniquement à imprimer des étiquettes pour ce lot de supermarché.
+              {smFormat === 'EAN13'
+                ? "EAN-13, préfixe 20 (plage GS1 réservée à l'usage interne/institutionnel) — pas besoin d'enregistrement GS1."
+                : `Format ${smFormat}, code alphanumérique interne.`}
+              {' '}Ces codes ne sont pas enregistrés en base : ils servent uniquement à imprimer des étiquettes pour ce lot.
             </p>
           </div>
 
           {smCodes.length > 0 && (() => {
-            const artworkH = smLabelWidthMm;
-            const labelH = artworkH + 22;
+            const labelH = Math.max(smLabelWidthMm + 10, smLabelHeightMm);
             const colsPreview = Math.max(1, Math.floor((210 - 2 * 10 + 5) / (smLabelWidthMm + 5)));
             const rowsPreview = Math.max(1, Math.floor((297 - 10 - 10 - 10 + 6) / (labelH + 6)));
             const perSheet = colsPreview * rowsPreview;
@@ -1114,6 +1141,17 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
                       max={100}
                       value={smLabelWidthMm}
                       onChange={(e) => setSmLabelWidthMm(Math.min(100, Math.max(30, parseInt(e.target.value) || 85)))}
+                      className="w-28 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-amber-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Longueur étiquette (mm)</label>
+                    <input
+                      type="number"
+                      min={40}
+                      max={150}
+                      value={smLabelHeightMm}
+                      onChange={(e) => setSmLabelHeightMm(Math.min(150, Math.max(40, parseInt(e.target.value) || 107)))}
                       className="w-28 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-amber-500 outline-none"
                     />
                   </div>
