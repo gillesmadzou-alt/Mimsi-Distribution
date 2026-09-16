@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase, Profile, ROLE_LABELS, UserRole, getRoleAccessLevel } from '@/lib/supabase';
 import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
-import { UserPlus, Loader2, Trash2, ShieldCheck, Search, Mail, Lock, User as UserIcon, X, CloudOff } from 'lucide-react';
+import { UserPlus, Loader2, Trash2, ShieldCheck, Search, Mail, Lock, User as UserIcon, X, CloudOff, Pencil } from 'lucide-react';
 
 const EMAIL_DOMAIN = 'mimsidistribution.com';
 const ACCESS_LEVEL_LABELS: Record<number, string> = {
@@ -43,6 +43,13 @@ export default function UsersPage() {
     role: 1 as UserRole,
     accessLevel: 1,
   });
+
+  const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
+  const [editRole, setEditRole] = useState<UserRole>(1);
+  const [editAccessLevel, setEditAccessLevel] = useState(1);
+  const [editPassword, setEditPassword] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
 
   const fetchProfiles = useCallback(async () => {
     setLoading(true);
@@ -111,6 +118,70 @@ export default function UsersPage() {
       setError('La fonction de création est inaccessible. Vérifiez la connexion et son déploiement Supabase.');
     }
     setCreating(false);
+  };
+
+  const openEdit = (profile: Profile) => {
+    setEditingProfile(profile);
+    setEditRole(profile.role);
+    setEditAccessLevel(getRoleAccessLevel(profile.role, profile.access_level));
+    setEditPassword('');
+    setEditError(null);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProfile) return;
+    setEditError(null);
+
+    if (editPassword && editPassword.length < 6) {
+      setEditError('Le mot de passe doit contenir au moins 6 caractères.');
+      return;
+    }
+
+    setEditSaving(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setEditError('Session expirée, veuillez vous reconnecter.');
+        setEditSaving(false);
+        return;
+      }
+
+      const roleChanged = editRole !== editingProfile.role;
+      const accessLevelChanged = editAccessLevel !== getRoleAccessLevel(editingProfile.role, editingProfile.access_level);
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/update-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            targetUserId: editingProfile.id,
+            ...(roleChanged ? { role: editRole } : {}),
+            ...(accessLevelChanged ? { accessLevel: editAccessLevel } : {}),
+            ...(editPassword ? { newPassword: editPassword } : {}),
+          }),
+        }
+      );
+
+      const result = await response.json().catch(() => ({
+        error: `La fonction de modification a renvoyé une réponse invalide (${response.status}).`,
+      }));
+      if (!response.ok) {
+        setEditError(result.error || 'Erreur lors de la modification du compte.');
+      } else {
+        setSuccess(`Compte de ${editingProfile.full_name} mis à jour.`);
+        setEditingProfile(null);
+        fetchProfiles();
+      }
+    } catch (requestError) {
+      console.error('update-user request failed:', requestError);
+      setEditError('La fonction de modification est inaccessible. Vérifiez la connexion et son déploiement Supabase.');
+    }
+    setEditSaving(false);
   };
 
   const handleToggleActive = async (profile: Profile) => {
@@ -243,15 +314,24 @@ export default function UsersPage() {
                     {new Date(p.created_at).toLocaleDateString('fr-FR')}
                   </td>
                   <td className="px-6 py-3 text-right">
-                    {p.role !== 6 && (
+                    <div className="flex items-center justify-end gap-1">
                       <button
-                        onClick={() => handleToggleActive(p)}
-                        className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                        title={p.is_active ? 'Désactiver' : 'Activer'}
+                        onClick={() => openEdit(p)}
+                        className="p-2 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                        title="Modifier le rôle, l’accès ou le mot de passe"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Pencil className="w-4 h-4" />
                       </button>
-                    )}
+                      {p.role !== 6 && (
+                        <button
+                          onClick={() => handleToggleActive(p)}
+                          className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                          title={p.is_active ? 'Désactiver' : 'Activer'}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -370,6 +450,78 @@ export default function UsersPage() {
               >
                 {creating && <Loader2 className="w-5 h-5 animate-spin" />}
                 Ajouter au personnel
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editingProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-[scaleIn_180ms_ease-out]">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-gray-900">Modifier {editingProfile.full_name}</h3>
+              <button
+                onClick={() => setEditingProfile(null)}
+                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Fonction</label>
+                <select
+                  value={editRole}
+                  onChange={(e) => {
+                    const role = Number(e.target.value) as UserRole;
+                    setEditRole(role);
+                    setEditAccessLevel(getRoleAccessLevel(role));
+                  }}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none transition-all"
+                >
+                  {Object.entries(ROLE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Niveau d’accès</label>
+                <select
+                  value={editAccessLevel}
+                  onChange={(e) => setEditAccessLevel(Number(e.target.value))}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none transition-all"
+                >
+                  {Object.entries(ACCESS_LEVEL_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nouveau mot de passe (optionnel)</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="password"
+                    minLength={6}
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none transition-all"
+                    placeholder="Laisser vide pour ne pas changer"
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Remplissez ce champ pour réinitialiser le mot de passe de cette personne (au moins 6 caractères).</p>
+              </div>
+              {editError && (
+                <div className="text-sm text-red-600 bg-red-50 rounded-lg p-3">{editError}</div>
+              )}
+              <button
+                type="submit"
+                disabled={editSaving}
+                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-lg hover:shadow-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {editSaving && <Loader2 className="w-5 h-5 animate-spin" />}
+                Enregistrer les modifications
               </button>
             </form>
           </div>
