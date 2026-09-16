@@ -15,6 +15,13 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 export const LINEAR_BARCODE_FORMATS = ['CODE128', 'EAN13', 'EAN8', 'CODE39', 'UPC'] as const;
 export type LinearBarcodeFormat = (typeof LINEAR_BARCODE_FORMATS)[number];
 
+// Les codes "classiques" sont alphanumériques (ex. POT-ABC123-001) : seuls
+// CODE128 et CODE39 acceptent ce genre de contenu. EAN13/EAN8/UPC exigent un
+// nombre fixe de chiffres et échouaient silencieusement ici — ils sont
+// réservés à l'onglet "Codes à barres institutionnels", qui génère déjà des
+// codes numériques conformes.
+const CLASSIQUE_BARCODE_FORMATS = ['CODE128', 'CODE39'] as const satisfies readonly LinearBarcodeFormat[];
+
 function drawBarcodeOnCanvas(canvas: HTMLCanvasElement, text: string, format: LinearBarcodeFormat = 'CODE128'): void {
   try {
     JsBarcode(canvas, text, {
@@ -156,7 +163,19 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
   // Sous-page « Supermarché » : étiquettes EAN-13 pour points de vente
   // institutionnels — générées à la volée, pas persistées en base (aucune
   // migration nécessaire).
-  const [subPage, setSubPage] = useState<'classique' | 'supermarche'>('classique');
+  const [subPage, setSubPage] = useState<'etiquettes' | 'classique' | 'supermarche'>('etiquettes');
+
+  // Sous-page « Étiquettes » : étiquettes simples sans code scannable (nom,
+  // prix, date) — pour les produits qui n'ont pas besoin d'être suivis
+  // individuellement. Générées à la volée, pas persistées en base.
+  const [etProductName, setEtProductName] = useState('');
+  const [etPrice, setEtPrice] = useState('');
+  const [etDate, setEtDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [etQuantity, setEtQuantity] = useState(1);
+  const [etLabelWidthMm, setEtLabelWidthMm] = useState(85);
+  const [etLabels, setEtLabels] = useState<{ name: string; price: string; date: string }[]>([]);
+  const [etExporting, setEtExporting] = useState(false);
+  const [etError, setEtError] = useState<string | null>(null);
   const [smPotTypeId, setSmPotTypeId] = useState('');
   const [smQuantity, setSmQuantity] = useState(1);
   const [smStartSeq, setSmStartSeq] = useState(1);
@@ -172,6 +191,103 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
       if (canvas) drawBarcodeOnCanvas(canvas, code, 'EAN13');
     });
   }, [smCodes]);
+
+  const generateEtiquettes = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!etProductName.trim() || etQuantity < 1) return;
+    const labels = Array.from({ length: etQuantity }, () => ({
+      name: etProductName.trim(),
+      price: etPrice.trim(),
+      date: etDate,
+    }));
+    setEtLabels(labels);
+  };
+
+  const exportEtiquettesPDF = async () => {
+    if (etLabels.length === 0) return;
+    setEtExporting(true);
+    setEtError(null);
+    try {
+      const { labelDataUrl: labelArtworkDataUrl, patternBandDataUrl, patternBandRatio } = await loadLabelAssets('/etiquette-madeleines-mimsi-sans-qr-hd.png');
+      const today = new Date().toISOString().slice(0, 10);
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const margin = 10;
+      const labelWidth = etLabelWidthMm;
+      const artworkHeight = labelWidth;
+      const variablePanelHeight = 22;
+      const labelHeight = artworkHeight + variablePanelHeight;
+      const gapX = 5;
+      const gapY = 6;
+      const headerOffset = 10;
+      const cols = Math.max(1, Math.floor((210 - 2 * margin + gapX) / (labelWidth + gapX)));
+      const rowsPerPage = Math.max(1, Math.floor((297 - margin - headerOffset - margin + gapY) / (labelHeight + gapY)));
+
+      let col = 0;
+      let row = 0;
+      let pageIndex = 0;
+      const drawPageHeader = (pg: number) => {
+        doc.setFontSize(10);
+        doc.setTextColor(120, 120, 120);
+        doc.text(`Étiquettes — page ${pg + 1}`, margin, 7);
+      };
+      drawPageHeader(pageIndex);
+
+      etLabels.forEach(({ name, price, date }) => {
+        if (row >= rowsPerPage) {
+          doc.addPage();
+          pageIndex++;
+          row = 0;
+          col = 0;
+          drawPageHeader(pageIndex);
+        }
+        const x = margin + col * (labelWidth + gapX);
+        const y = margin + 10 + row * (labelHeight + gapY);
+
+        doc.setDrawColor(190, 22, 25);
+        doc.setLineWidth(0.35);
+        doc.roundedRect(x, y, labelWidth, labelHeight, 2, 2, 'S');
+        doc.addImage(labelArtworkDataUrl, 'PNG', x, y, labelWidth, artworkHeight);
+        doc.setFillColor(255, 255, 255);
+        doc.rect(x + 0.35, y + artworkHeight, labelWidth - 0.7, variablePanelHeight - 0.35, 'F');
+        drawVariablePanelPattern(doc, patternBandDataUrl, patternBandRatio, x, y + artworkHeight, labelWidth, variablePanelHeight);
+
+        const panelTop = y + artworkHeight;
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(x + 7, panelTop + 1.2, labelWidth - 14, 6.5, 0.8, 0.8, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(190, 22, 25);
+        const nameUpper = name.toUpperCase();
+        fitFontSize(doc, nameUpper, labelWidth - 10, 11, 7);
+        doc.text(nameUpper, x + labelWidth / 2, panelTop + 5.5, { align: 'center' });
+
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(x + 8, panelTop + 9.5, labelWidth - 16, 5.5, 0.8, 0.8, 'F');
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(45, 52, 54);
+        const priceText = price ? formatFCFA(Number(price)) : '';
+        fitFontSize(doc, priceText, labelWidth - 10, 9, 6);
+        doc.text(priceText, x + labelWidth / 2, panelTop + 13.3, { align: 'center' });
+
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(x + 8, panelTop + 16.5, labelWidth - 16, 4.5, 0.8, 0.8, 'F');
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(120, 120, 120);
+        const dateText = date ? new Date(date).toLocaleDateString('fr-FR') : '';
+        fitFontSize(doc, dateText, labelWidth - 10, 8, 6);
+        doc.text(dateText, x + labelWidth / 2, panelTop + 19.5, { align: 'center' });
+
+        col++;
+        if (col >= cols) { col = 0; row++; }
+      });
+
+      doc.save(`etiquettes-${today}.pdf`);
+    } catch (error) {
+      console.error('étiquettes PDF export failed:', error);
+      setEtError('Impossible de générer le PDF. Réessayez.');
+    } finally {
+      setEtExporting(false);
+    }
+  };
 
   const generateSupermarche = (e: React.FormEvent) => {
     e.preventDefault();
@@ -210,7 +326,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
       const drawPageHeader = (pg: number) => {
         doc.setFontSize(10);
         doc.setTextColor(120, 120, 120);
-        doc.text(`Étiquettes supermarché (EAN-13) — page ${pg + 1}`, margin, 7);
+        doc.text(`Codes à barres institutionnels (EAN-13) — page ${pg + 1}`, margin, 7);
       };
       drawPageHeader(pageIndex);
 
@@ -563,14 +679,22 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={() => setSubPage('etiquettes')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+            subPage === 'etiquettes' ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          <Package className="w-4 h-4" /> Étiquettes
+        </button>
         <button
           onClick={() => setSubPage('classique')}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
             subPage === 'classique' ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
           }`}
         >
-          <Barcode className="w-4 h-4" /> Classique
+          <Barcode className="w-4 h-4" /> Codes à barres classiques
         </button>
         <button
           onClick={() => setSubPage('supermarche')}
@@ -578,9 +702,85 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
             subPage === 'supermarche' ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
           }`}
         >
-          <Package className="w-4 h-4" /> Supermarché
+          <Barcode className="w-4 h-4" /> Codes à barres institutionnels
         </button>
       </div>
+
+      {subPage === 'etiquettes' && (
+      <div className="space-y-6">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-md">
+            <Package className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h3 className="font-bold text-gray-900 text-lg">Étiquettes simples</h3>
+            <p className="text-sm text-gray-500">Nom, prix et date — sans code scannable, pas liées au stock/production</p>
+          </div>
+        </div>
+        <form onSubmit={generateEtiquettes} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nom du produit</label>
+            <input required value={etProductName} onChange={(e) => setEtProductName(e.target.value)}
+              placeholder="Ex. Madeleines nature"
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Prix (FCFA, optionnel)</label>
+            <input type="number" min="0" value={etPrice} onChange={(e) => setEtPrice(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+            <input type="date" value={etDate} onChange={(e) => setEtDate(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Quantité d'étiquettes</label>
+            <input type="number" min="1" required value={etQuantity} onChange={(e) => setEtQuantity(Number(e.target.value))}
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Largeur d'étiquette (mm)</label>
+            <input type="number" min="40" max="120" value={etLabelWidthMm} onChange={(e) => setEtLabelWidthMm(Number(e.target.value))}
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none" />
+          </div>
+          <div className="md:col-span-4">
+            <button type="submit"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-medium shadow-md hover:shadow-lg transition-all">
+              <Plus className="w-4 h-4" /> Générer les étiquettes
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {etLabels.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm text-gray-500">{etLabels.length} étiquette(s) prête(s)</p>
+            <button
+              onClick={() => { void exportEtiquettesPDF(); }}
+              disabled={etExporting}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50"
+            >
+              {etExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              Exporter en PDF
+            </button>
+          </div>
+          {etError && <p className="text-sm text-red-600 mb-3">{etError}</p>}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {etLabels.map((label, i) => (
+              <div key={i} className="border border-gray-200 rounded-xl p-3 text-center">
+                <p className="font-semibold text-gray-900 text-sm truncate">{label.name}</p>
+                {label.price && <p className="text-xs text-gray-600 mt-1">{formatFCFA(Number(label.price))}</p>}
+                {label.date && <p className="text-xs text-gray-400 mt-0.5">{new Date(label.date).toLocaleDateString('fr-FR')}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      </div>
+      )}
 
       {subPage === 'classique' && (
       <div className="space-y-6">
@@ -708,7 +908,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
                 onChange={(e) => setBarcodeFormat(e.target.value as LinearBarcodeFormat)}
                 className="px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-amber-500 outline-none bg-white"
               >
-                {LINEAR_BARCODE_FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}
+                {CLASSIQUE_BARCODE_FORMATS.map((f) => <option key={f} value={f}>{f}</option>)}
               </select>
             </div>
             <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
@@ -843,7 +1043,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
                 <Package className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h3 className="font-bold text-gray-900 text-lg">Codes à barres pour supermarché</h3>
+                <h3 className="font-bold text-gray-900 text-lg">Codes à barres institutionnels</h3>
                 <p className="text-sm text-gray-500">Codes EAN-13 institutionnels, générés à la volée — pas liés au stock/production</p>
               </div>
             </div>
