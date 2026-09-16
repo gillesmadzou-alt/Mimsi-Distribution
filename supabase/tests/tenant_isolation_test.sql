@@ -24,6 +24,7 @@ DECLARE
   v_n       integer;
   v_leaks   text[] := '{}';
   v_check   uuid;
+  v_cols    text[];
 BEGIN
   -- ==========================================================================
   -- 1. VERIFICATIONS STRUCTURELLES : aucune table metier ne doit passer entre
@@ -72,11 +73,53 @@ BEGIN
     END IF;
   END LOOP;
 
+  -- --------------------------------------------------------------------------
+  -- Contraintes d'unicite : une unicite definie sans org_id porte sur TOUTE la
+  -- table, tous locataires confondus. Le deuxieme client se heurte alors a une
+  -- collision causee par une ligne qu'il ne peut meme pas voir. Ce controle
+  -- avait manque `auto_reply_settings`, dont la cle primaire etait `channel`
+  -- seul : un seul locataire pouvait configurer son bot.
+  --
+  -- Les cles globales par nature sont exemptees : identifiant d'une plateforme
+  -- externe, code-barres physique, reference d'un prestataire de paiement.
+  -- Une contrainte dont toutes les colonnes sont des cles etrangeres vers des
+  -- tables deja cloisonnees l'est aussi : la collision y est impossible.
+  -- --------------------------------------------------------------------------
+  FOR v_table, v_cols IN
+    SELECT t.relname, array_agg(a.attname::text ORDER BY a.attnum)
+      FROM pg_index i
+      JOIN pg_class t     ON t.oid = i.indrelid
+      JOIN pg_namespace n ON n.oid = t.relnamespace
+      JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(i.indkey)
+     WHERE n.nspname = 'public'
+       AND i.indisunique
+       AND EXISTS (SELECT 1 FROM pg_attribute x
+                    WHERE x.attrelid = t.oid AND x.attname = 'org_id'
+                      AND x.attnum > 0 AND NOT x.attisdropped)
+       AND t.relname NOT IN (
+         -- Cles globales par nature, exemptees deliberement.
+         'barcodes', 'qr_codes', 'facebook_comments', 'marketing_orders',
+         'payment_requests', 'social_connections',
+         -- Contraintes portant uniquement sur des cles etrangeres deja cloisonnees.
+         'batch_pot_types', 'batch_sales_points', 'return_pot_types',
+         'deposit_barcodes', 'compliance_checks', 'delivery_batch_approvals',
+         'receivables', 'driver_locations', 'bakers', 'attendance_records',
+         'accounting_entries'
+       )
+     GROUP BY i.indexrelid, t.relname
+    HAVING NOT ('org_id' = ANY(array_agg(a.attname::text)))
+       AND array_agg(a.attname::text) <> ARRAY['id']::text[]
+  LOOP
+    v_missing := v_missing || format(
+      '%s : unicite sur (%s) sans org_id -- porte sur tous les locataires',
+      v_table, array_to_string(v_cols, ', '));
+  END LOOP;
+
   IF array_length(v_missing, 1) > 0 THEN
     RAISE EXCEPTION E'Cloisonnement incomplet sur % point(s) :\n  %',
       array_length(v_missing, 1), array_to_string(v_missing, E'\n  ');
   END IF;
-  RAISE NOTICE 'OK  structure : les 61 tables metier ont org_id NOT NULL, l''isolation et le trigger.';
+  RAISE NOTICE 'OK  structure : org_id NOT NULL, isolation, trigger, et aucune unicite non cloisonnee.';
 
   -- ==========================================================================
   -- 2. MISE EN PLACE : une deuxieme organisation, un utilisateur de chaque cote
