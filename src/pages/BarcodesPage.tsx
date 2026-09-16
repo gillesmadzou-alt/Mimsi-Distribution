@@ -12,7 +12,7 @@ import { useRealtimeSubscription } from '@/hooks/useRealtimeSubscription';
 
 // Formats de codes-barres linéaires uniquement (pas de QR) : certains points
 // de vente/supermarchés partenaires scannent une série plutôt qu'une autre.
-export const LINEAR_BARCODE_FORMATS = ['CODE128', 'EAN13', 'EAN8', 'CODE39', 'UPC'] as const;
+export const LINEAR_BARCODE_FORMATS = ['CODE128', 'EAN13', 'EAN8', 'CODE39', 'CODE93', 'UPC', 'ITF14', 'codabar'] as const;
 export type LinearBarcodeFormat = (typeof LINEAR_BARCODE_FORMATS)[number];
 
 function drawBarcodeOnCanvas(canvas: HTMLCanvasElement, text: string, format: LinearBarcodeFormat = 'CODE128'): void {
@@ -112,35 +112,68 @@ function generateLotCode(record: ProductionRecord): string {
   return `LOT-${record.production_date.split('-').join('')}-${record.id.slice(0, 8).toUpperCase()}`;
 }
 
-// Codes EAN-13 pour les étiquettes destinées aux supermarchés/points de
-// vente institutionnels — un vrai code numérique scannable, pas un simple
-// alphanumérique interne. Préfixe 20-29 : plage GS1 réservée à la
-// « circulation restreinte » (usage interne à une entreprise), donc valide
-// sans avoir besoin d'un numéro d'entreprise GS1 enregistré.
-function ean13CheckDigit(digits12: string): number {
+// Chiffre de contrôle mod-10 partagé par toute la famille GS1 (EAN-13,
+// EAN-8, UPC-A, ITF-14) : en partant du chiffre le plus à droite des
+// données, poids 3 puis 1 en alternance. Fonctionne pour n'importe quelle
+// longueur de données, donc réutilisable pour les quatre formats.
+function gs1CheckDigit(dataDigits: string): number {
   let sum = 0;
-  for (let i = 0; i < 12; i++) {
-    const d = digits12.charCodeAt(i) - 48;
-    sum += i % 2 === 0 ? d : d * 3;
+  for (let i = 0; i < dataDigits.length; i++) {
+    const d = dataDigits.charCodeAt(i) - 48;
+    const posFromRight = dataDigits.length - i;
+    sum += posFromRight % 2 === 1 ? d * 3 : d;
   }
   return (10 - (sum % 10)) % 10;
 }
 
+// Préfixe 20-29 : plage GS1 réservée à la « circulation restreinte » (usage
+// interne à une entreprise), valide sans numéro d'entreprise GS1 enregistré.
 function generateEAN13(potIndex: number, sequence: number): string {
-  const prefix = '20';
-  const potCode = String(potIndex % 100).padStart(2, '0');
-  const seq = String(sequence % 100000000).padStart(8, '0');
-  const base12 = prefix + potCode + seq;
-  return base12 + String(ean13CheckDigit(base12));
+  const data = '20' + String(potIndex % 100).padStart(2, '0') + String(sequence % 100000000).padStart(8, '0');
+  return data + String(gs1CheckDigit(data));
 }
 
-// CODE128/CODE39 acceptent du texte alphanumérique : contrairement à
-// generateEAN13, pas de longueur ou de chiffre de contrôle imposés.
+function generateEAN8(potIndex: number, sequence: number): string {
+  const data = String(potIndex % 100).padStart(2, '0') + String(sequence % 100000).padStart(5, '0');
+  return data + String(gs1CheckDigit(data));
+}
+
+// UPC-A : même algorithme que l'EAN-13 en imaginant un « 0 » invisible
+// devant — on utilise ici le système « 2 » (circulation restreinte),
+// l'équivalent UPC du préfixe GS1 20-29.
+function generateUPC(potIndex: number, sequence: number): string {
+  const data = '2' + String(potIndex % 100).padStart(2, '0') + String(sequence % 100000000).padStart(8, '0');
+  return data + String(gs1CheckDigit(data));
+}
+
+// ITF-14 (GTIN-14) : indicateur d'emballage '0' + plage interne '2' +
+// identifiant, comme les autres formats GS1 ci-dessus.
+function generateITF14(potIndex: number, sequence: number): string {
+  const data = '02' + String(potIndex % 100).padStart(2, '0') + String(sequence % 100000000).padStart(8, '0');
+  return data + String(gs1CheckDigit(data));
+}
+
+// Codabar n'accepte que les chiffres et quelques symboles (- $ : / . +) :
+// pas de lettres, donc un code purement numérique avec un tiret.
+function generateCodabarCode(potIndex: number, sequence: number): string {
+  return String(potIndex % 100).padStart(2, '0') + '-' + String(sequence % 1000000).padStart(6, '0');
+}
+
+// CODE128/CODE39/CODE93 acceptent du texte alphanumérique : pas de longueur
+// ni de chiffre de contrôle imposés.
 function generateInstitutionnelCode(format: LinearBarcodeFormat, potIndex: number, sequence: number): string {
-  if (format === 'EAN13') return generateEAN13(potIndex, sequence);
-  const potCode = String(potIndex % 100).padStart(2, '0');
-  const seq = String(sequence % 100000).padStart(5, '0');
-  return `INST-${potCode}-${seq}`;
+  switch (format) {
+    case 'EAN13': return generateEAN13(potIndex, sequence);
+    case 'EAN8': return generateEAN8(potIndex, sequence);
+    case 'UPC': return generateUPC(potIndex, sequence);
+    case 'ITF14': return generateITF14(potIndex, sequence);
+    case 'codabar': return generateCodabarCode(potIndex, sequence);
+    default: {
+      const potCode = String(potIndex % 100).padStart(2, '0');
+      const seq = String(sequence % 100000).padStart(5, '0');
+      return `INST-${potCode}-${seq}`;
+    }
+  }
 }
 
 export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: string) => void }) {
@@ -154,8 +187,10 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
   const [loading, setLoading] = useState(true);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
-  const [labelWidthMm, setLabelWidthMm] = useState(85);
-  const [labelHeightMm, setLabelHeightMm] = useState(107);
+  // Dimensions du graphique du code à barres lui-même (pas d'étiquette
+  // habillée ici : juste le code, son texte, le nom du pot et le lot).
+  const [barcodeWidthMm, setBarcodeWidthMm] = useState(60);
+  const [barcodeHeightMm, setBarcodeHeightMm] = useState(18);
   // Fixe : le choix du format (CODE128, CODE39, EAN13…) se fait désormais
   // uniquement dans l'onglet "Codes à barres institutionnels".
   const barcodeFormat: LinearBarcodeFormat = 'CODE128';
@@ -186,8 +221,10 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
   const [smFormat, setSmFormat] = useState<LinearBarcodeFormat>('EAN13');
   const [smQuantity, setSmQuantity] = useState(1);
   const [smStartSeq, setSmStartSeq] = useState(1);
-  const [smLabelWidthMm, setSmLabelWidthMm] = useState(85);
-  const [smLabelHeightMm, setSmLabelHeightMm] = useState(107);
+  // Dimensions du graphique du code à barres lui-même (pas d'étiquette
+  // habillée ici : juste le code, son texte, et le nom du point de vente).
+  const [smBarcodeWidthMm, setSmBarcodeWidthMm] = useState(60);
+  const [smBarcodeHeightMm, setSmBarcodeHeightMm] = useState(18);
   const [smCodes, setSmCodes] = useState<{ code: string; potTypeName: string }[]>([]);
   const [smExporting, setSmExporting] = useState(false);
   const [smError, setSmError] = useState<string | null>(null);
@@ -314,19 +351,21 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
     setSmExporting(true);
     setSmError(null);
     try {
-      const { labelDataUrl: labelArtworkDataUrl, patternBandDataUrl, patternBandRatio } = await loadLabelAssets('/etiquette-madeleines-mimsi-sans-qr-hd.png');
       const today = new Date().toISOString().slice(0, 10);
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const margin = 10;
-      const labelWidth = smLabelWidthMm;
-      const labelHeight = Math.max(smLabelWidthMm + 10, smLabelHeightMm);
-      const artworkHeight = labelWidth;
-      const variablePanelHeight = labelHeight - artworkHeight;
+      const barcodeWidth = smBarcodeWidthMm;
+      const barcodeHeight = smBarcodeHeightMm;
+      const nameRowHeight = 5;
+      const codeRowHeight = 5;
+      const padding = 3;
+      const boxWidth = barcodeWidth + padding * 2;
+      const boxHeight = nameRowHeight + barcodeHeight + codeRowHeight + padding * 2;
       const gapX = 5;
       const gapY = 6;
       const headerOffset = 10;
-      const cols = Math.max(1, Math.floor((210 - 2 * margin + gapX) / (labelWidth + gapX)));
-      const rowsPerPage = Math.max(1, Math.floor((297 - margin - headerOffset - margin + gapY) / (labelHeight + gapY)));
+      const cols = Math.max(1, Math.floor((210 - 2 * margin + gapX) / (boxWidth + gapX)));
+      const rowsPerPage = Math.max(1, Math.floor((297 - margin - headerOffset - margin + gapY) / (boxHeight + gapY)));
 
       let col = 0;
       let row = 0;
@@ -334,7 +373,7 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
       const drawPageHeader = (pg: number) => {
         doc.setFontSize(10);
         doc.setTextColor(120, 120, 120);
-        doc.text(`Codes à barres institutionnels (EAN-13) — page ${pg + 1}`, margin, 7);
+        doc.text(`Codes à barres institutionnels (${smFormat}) — page ${pg + 1}`, margin, 7);
       };
       drawPageHeader(pageIndex);
 
@@ -346,25 +385,17 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
           col = 0;
           drawPageHeader(pageIndex);
         }
-        const x = margin + col * (labelWidth + gapX);
-        const y = margin + 10 + row * (labelHeight + gapY);
+        const x = margin + col * (boxWidth + gapX);
+        const y = margin + 10 + row * (boxHeight + gapY);
 
-        doc.setDrawColor(190, 22, 25);
-        doc.setLineWidth(0.35);
-        doc.roundedRect(x, y, labelWidth, labelHeight, 2, 2, 'S');
-        doc.addImage(labelArtworkDataUrl, 'PNG', x, y, labelWidth, artworkHeight);
-        doc.setFillColor(255, 255, 255);
-        doc.rect(x + 0.35, y + artworkHeight, labelWidth - 0.7, variablePanelHeight - 0.35, 'F');
-        drawVariablePanelPattern(doc, patternBandDataUrl, patternBandRatio, x, y + artworkHeight, labelWidth, variablePanelHeight);
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.25);
+        doc.rect(x, y, boxWidth, boxHeight, 'S');
 
-        const panelTop = y + artworkHeight;
-        doc.setFillColor(255, 255, 255);
-        doc.roundedRect(x + 7, panelTop + 0.8, labelWidth - 14, 4.8, 0.8, 0.8, 'F');
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(190, 22, 25);
-        const potNameUpper = potTypeName.toUpperCase();
-        fitFontSize(doc, potNameUpper, labelWidth - 10, 10, 7);
-        doc.text(potNameUpper, x + labelWidth / 2, panelTop + 4.5, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(90, 90, 90);
+        fitFontSize(doc, potTypeName, boxWidth - 4, 8, 6);
+        doc.text(potTypeName, x + boxWidth / 2, y + padding + 3, { align: 'center' });
 
         const barcodeCanvas = document.createElement('canvas');
         JsBarcode(barcodeCanvas, code, {
@@ -372,27 +403,25 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
           displayValue: false,
           height: 60,
           width: 2,
-          margin: 12,
+          margin: 4,
           background: '#ffffff',
           lineColor: '#000000',
         });
         const barcodeData = barcodeCanvas.toDataURL('image/png');
-        doc.addImage(barcodeData, 'PNG', x + 5, panelTop + 6, labelWidth - 10, 9);
+        doc.addImage(barcodeData, 'PNG', x + padding, y + padding + nameRowHeight, barcodeWidth, barcodeHeight);
 
-        doc.setFillColor(255, 255, 255);
-        doc.roundedRect(x + 8, panelTop + 17.4, labelWidth - 16, 4.2, 0.8, 0.8, 'F');
         doc.setFont('courier', 'normal');
         doc.setTextColor(45, 52, 54);
-        fitFontSize(doc, code, labelWidth - 10, 8, 6);
-        doc.text(code, x + labelWidth / 2, panelTop + 20.5, { align: 'center' });
+        fitFontSize(doc, code, boxWidth - 4, 8, 6);
+        doc.text(code, x + boxWidth / 2, y + padding + nameRowHeight + barcodeHeight + 3.5, { align: 'center' });
 
         col++;
         if (col >= cols) { col = 0; row++; }
       });
 
-      doc.save(`code-barres-supermarche-${today}.pdf`);
+      doc.save(`code-barres-institutionnel-${today}.pdf`);
     } catch (error) {
-      console.error('supermarché barcode PDF export failed:', error);
+      console.error('institutionnel barcode PDF export failed:', error);
       setSmError('Impossible de générer le PDF. Réessayez.');
     } finally {
       setSmExporting(false);
@@ -567,8 +596,6 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
     setPdfError(null);
 
     try {
-      const { labelDataUrl: labelArtworkDataUrl, patternBandDataUrl, patternBandRatio } = await loadLabelAssets('/etiquette-madeleines-mimsi-sans-qr-hd.png');
-
       const today = new Date().toISOString().slice(0, 10);
 
       const counterKey = `barcode_pdf_counter_${today}`;
@@ -578,32 +605,39 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
 
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const margin = 10;
-      const labelWidth = labelWidthMm;
-      // L'artwork de l'étiquette est carré à l'origine (85x85) : on garde ce
-      // ratio 1:1 quelle que soit la largeur choisie pour ne pas le déformer.
-      // La longueur totale (largeur + bandeau texte) reste réglable séparément.
-      const labelHeight = Math.max(labelWidthMm + 10, labelHeightMm);
-      const artworkHeight = labelWidth;
-      const variablePanelHeight = labelHeight - artworkHeight;
+      const barcodeWidth = barcodeWidthMm;
+      const barcodeHeight = barcodeHeightMm;
+      const nameRowHeight = 5;
+      const lotRowHeight = 4;
+      const codeRowHeight = 5;
+      const padding = 3;
       const gapX = 5;
       const gapY = 6;
       const headerOffset = 10;
-      const cols = Math.max(1, Math.floor((210 - 2 * margin + gapX) / (labelWidth + gapX)));
-      const rowsPerPage = Math.max(1, Math.floor((297 - margin - headerOffset - margin + gapY) / (labelHeight + gapY)));
+
+      const drawPageHeader = (pg: number) => {
+        doc.setFontSize(10);
+        doc.setTextColor(120, 120, 120);
+        doc.text(`Codes à barres classiques (${barcodeFormat}) — page ${pg + 1}`, margin, 7);
+      };
+
+      // Grille uniforme : chaque case réserve la place du lot même si ce
+      // code précis n'en a pas, pour que toutes les cases aient la même
+      // taille et s'alignent proprement.
+      const boxWidth = barcodeWidth + padding * 2;
+      const boxHeight = nameRowHeight + lotRowHeight + barcodeHeight + codeRowHeight + padding * 2;
+      const cols = Math.max(1, Math.floor((210 - 2 * margin + gapX) / (boxWidth + gapX)));
+      const rowsPerPage = Math.max(1, Math.floor((297 - margin - headerOffset - margin + gapY) / (boxHeight + gapY)));
 
       let col = 0;
       let row = 0;
       let pageIndex = 0;
 
-      const drawPageHeader = (pg: number) => {
-        doc.setFontSize(10);
-        doc.setTextColor(120, 120, 120);
-        doc.text(`Étiquettes codes à barres — page ${pg + 1}`, margin, 7);
-      };
-
       drawPageHeader(pageIndex);
 
       available.forEach((b) => {
+        const lotCode = b.production_record ? generateLotCode(b.production_record) : null;
+
         if (row >= rowsPerPage) {
           doc.addPage();
           pageIndex++;
@@ -612,33 +646,24 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
           drawPageHeader(pageIndex);
         }
 
-        const x = margin + col * (labelWidth + gapX);
-        const y = margin + 10 + row * (labelHeight + gapY);
+        const x = margin + col * (boxWidth + gapX);
+        const y = margin + 10 + row * (boxHeight + gapY);
 
-        doc.setDrawColor(190, 22, 25);
-        doc.setLineWidth(0.35);
-        doc.roundedRect(x, y, labelWidth, labelHeight, 2, 2, 'S');
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.25);
+        doc.rect(x, y, boxWidth, boxHeight, 'S');
 
-        doc.addImage(labelArtworkDataUrl, 'PNG', x, y, labelWidth, artworkHeight);
-        doc.setFillColor(255, 255, 255);
-        doc.rect(x + 0.35, y + artworkHeight, labelWidth - 0.7, variablePanelHeight - 0.35, 'F');
-        drawVariablePanelPattern(doc, patternBandDataUrl, patternBandRatio, x, y + artworkHeight, labelWidth, variablePanelHeight);
-
-        const potName = (b.pot_type?.name ?? '—').toUpperCase();
-        const lotCode = b.production_record ? generateLotCode(b.production_record) : null;
-        const panelTop = y + artworkHeight;
-        doc.setFillColor(255, 255, 255);
-        doc.roundedRect(x + 7, panelTop + 0.8, labelWidth - 14, lotCode ? 6.2 : 4.8, 0.8, 0.8, 'F');
+        const potName = b.pot_type?.name ?? '—';
         doc.setFont('helvetica', 'bold');
-        doc.setTextColor(190, 22, 25);
-        fitFontSize(doc, potName, labelWidth - 10, 10, 7);
-        doc.text(potName, x + labelWidth / 2, panelTop + (lotCode ? 3.5 : 4.5), { align: 'center' });
+        doc.setTextColor(45, 52, 54);
+        fitFontSize(doc, potName, boxWidth - 4, 8, 6);
+        doc.text(potName, x + boxWidth / 2, y + padding + 3, { align: 'center' });
 
         if (lotCode) {
           doc.setFont('helvetica', 'normal');
-          doc.setTextColor(70, 70, 70);
-          fitFontSize(doc, lotCode, labelWidth - 10, 6, 5);
-          doc.text(lotCode, x + labelWidth / 2, panelTop + 6.5, { align: 'center' });
+          doc.setTextColor(120, 120, 120);
+          fitFontSize(doc, lotCode, boxWidth - 4, 6, 5);
+          doc.text(lotCode, x + boxWidth / 2, y + padding + nameRowHeight + 2.5, { align: 'center' });
         }
 
         const barcodeCanvas = document.createElement('canvas');
@@ -647,20 +672,18 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
           displayValue: false,
           height: 60,
           width: 2,
-          margin: 12,
+          margin: 4,
           background: '#ffffff',
           lineColor: '#000000',
         });
         const barcodeData = barcodeCanvas.toDataURL('image/png');
-        const barcodeY = panelTop + (lotCode ? 7.5 : 6);
-        doc.addImage(barcodeData, 'PNG', x + 5, barcodeY, labelWidth - 10, 9);
+        const barcodeY = y + padding + nameRowHeight + lotRowHeight;
+        doc.addImage(barcodeData, 'PNG', x + padding, barcodeY, barcodeWidth, barcodeHeight);
 
-        doc.setFillColor(255, 255, 255);
-        doc.roundedRect(x + 8, panelTop + 17.4, labelWidth - 16, 4.2, 0.8, 0.8, 'F');
         doc.setFont('courier', 'normal');
         doc.setTextColor(45, 52, 54);
-        fitFontSize(doc, b.code, labelWidth - 10, 8, 6);
-        doc.text(b.code, x + labelWidth / 2, panelTop + 20.5, { align: 'center' });
+        fitFontSize(doc, b.code, boxWidth - 4, 8, 6);
+        doc.text(b.code, x + boxWidth / 2, barcodeY + barcodeHeight + 3.5, { align: 'center' });
 
         col++;
         if (col >= cols) { col = 0; row++; }
@@ -896,38 +919,39 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
       </div>
 
       {available.length > 0 && (() => {
-        const labelH = Math.max(labelWidthMm + 10, labelHeightMm);
-        const colsPreview = Math.max(1, Math.floor((210 - 2 * 10 + 5) / (labelWidthMm + 5)));
-        const rowsPreview = Math.max(1, Math.floor((297 - 10 - 10 - 10 + 6) / (labelH + 6)));
+        const boxW = barcodeWidthMm + 6;
+        const boxH = barcodeHeightMm + 17;
+        const colsPreview = Math.max(1, Math.floor((210 - 2 * 10 + 5) / (boxW + 5)));
+        const rowsPreview = Math.max(1, Math.floor((297 - 10 - 10 - 10 + 6) / (boxH + 6)));
         const perSheet = colsPreview * rowsPreview;
         const sheetsNeeded = Math.ceil(available.length / perSheet);
         return (
         <div className="space-y-3">
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-end gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Largeur étiquette (mm)</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Largeur du code à barres (mm)</label>
               <input
                 type="number"
-                min={30}
+                min={20}
                 max={100}
-                value={labelWidthMm}
-                onChange={(e) => setLabelWidthMm(Math.min(100, Math.max(30, parseInt(e.target.value) || 85)))}
+                value={barcodeWidthMm}
+                onChange={(e) => setBarcodeWidthMm(Math.min(100, Math.max(20, parseInt(e.target.value) || 60)))}
                 className="w-28 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-amber-500 outline-none"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Longueur étiquette (mm)</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Longueur du code à barres (mm)</label>
               <input
                 type="number"
-                min={40}
-                max={150}
-                value={labelHeightMm}
-                onChange={(e) => setLabelHeightMm(Math.min(150, Math.max(40, parseInt(e.target.value) || 107)))}
+                min={8}
+                max={60}
+                value={barcodeHeightMm}
+                onChange={(e) => setBarcodeHeightMm(Math.min(60, Math.max(8, parseInt(e.target.value) || 18)))}
                 className="w-28 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-amber-500 outline-none"
               />
             </div>
             <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-              <span className="font-medium text-gray-900">{perSheet}</span> étiquette{perSheet > 1 ? 's' : ''} / feuille A4
+              <span className="font-medium text-gray-900">{perSheet}</span> code{perSheet > 1 ? 's' : ''} / feuille A4
               {' · '}
               <span className="font-medium text-gray-900">{available.length}</span> au total → <span className="font-medium text-gray-900">{sheetsNeeded}</span> feuille{sheetsNeeded > 1 ? 's' : ''}
             </div>
@@ -1117,46 +1141,54 @@ export default function BarcodesPage({ onNavigate }: { onNavigate?: (page: strin
               </button>
             </form>
             <p className="mt-3 text-xs text-gray-400">
-              {smFormat === 'EAN13'
-                ? "EAN-13, préfixe 20 (plage GS1 réservée à l'usage interne/institutionnel) — pas besoin d'enregistrement GS1."
-                : `Format ${smFormat}, code alphanumérique interne.`}
-              {' '}Ces codes ne sont pas enregistrés en base : ils servent uniquement à imprimer des étiquettes pour ce lot.
+              {(() => {
+                switch (smFormat) {
+                  case 'EAN13': return "EAN-13, préfixe 20 (plage GS1 réservée à l'usage interne/institutionnel) — pas besoin d'enregistrement GS1.";
+                  case 'EAN8': return 'EAN-8, code numérique court avec chiffre de contrôle.';
+                  case 'UPC': return "UPC-A, système « 2 » (plage réservée à l'usage interne) avec chiffre de contrôle.";
+                  case 'ITF14': return 'ITF-14 (GTIN-14), pour identifier un carton/lot plutôt qu\'un pot individuel.';
+                  case 'codabar': return 'Codabar, code numérique interne.';
+                  default: return `Format ${smFormat}, code alphanumérique interne.`;
+                }
+              })()}
+              {' '}Ces codes ne sont pas enregistrés en base : ils servent uniquement à imprimer les codes de ce lot.
             </p>
           </div>
 
           {smCodes.length > 0 && (() => {
-            const labelH = Math.max(smLabelWidthMm + 10, smLabelHeightMm);
-            const colsPreview = Math.max(1, Math.floor((210 - 2 * 10 + 5) / (smLabelWidthMm + 5)));
-            const rowsPreview = Math.max(1, Math.floor((297 - 10 - 10 - 10 + 6) / (labelH + 6)));
+            const boxW = smBarcodeWidthMm + 6;
+            const boxH = smBarcodeHeightMm + 16;
+            const colsPreview = Math.max(1, Math.floor((210 - 2 * 10 + 5) / (boxW + 5)));
+            const rowsPreview = Math.max(1, Math.floor((297 - 10 - 10 - 10 + 6) / (boxH + 6)));
             const perSheet = colsPreview * rowsPreview;
             const sheetsNeeded = Math.ceil(smCodes.length / perSheet);
             return (
               <div className="space-y-3">
                 <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-wrap items-end gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Largeur étiquette (mm)</label>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Largeur du code à barres (mm)</label>
                     <input
                       type="number"
-                      min={30}
+                      min={20}
                       max={100}
-                      value={smLabelWidthMm}
-                      onChange={(e) => setSmLabelWidthMm(Math.min(100, Math.max(30, parseInt(e.target.value) || 85)))}
+                      value={smBarcodeWidthMm}
+                      onChange={(e) => setSmBarcodeWidthMm(Math.min(100, Math.max(20, parseInt(e.target.value) || 60)))}
                       className="w-28 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-amber-500 outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Longueur étiquette (mm)</label>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Longueur du code à barres (mm)</label>
                     <input
                       type="number"
-                      min={40}
-                      max={150}
-                      value={smLabelHeightMm}
-                      onChange={(e) => setSmLabelHeightMm(Math.min(150, Math.max(40, parseInt(e.target.value) || 107)))}
+                      min={8}
+                      max={60}
+                      value={smBarcodeHeightMm}
+                      onChange={(e) => setSmBarcodeHeightMm(Math.min(60, Math.max(8, parseInt(e.target.value) || 18)))}
                       className="w-28 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:border-amber-500 outline-none"
                     />
                   </div>
                   <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-                    <span className="font-medium text-gray-900">{perSheet}</span> étiquette{perSheet > 1 ? 's' : ''} / feuille A4
+                    <span className="font-medium text-gray-900">{perSheet}</span> code{perSheet > 1 ? 's' : ''} / feuille A4
                     {' · '}
                     <span className="font-medium text-gray-900">{smCodes.length}</span> au total → <span className="font-medium text-gray-900">{sheetsNeeded}</span> feuille{sheetsNeeded > 1 ? 's' : ''}
                   </div>
