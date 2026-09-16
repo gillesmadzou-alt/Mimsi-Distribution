@@ -962,6 +962,44 @@ export default function ReportsPage({ onNavigate }: { onNavigate?: (page: string
       },
     },
     {
+      id: 'sales-points-list',
+      title: 'Liste des points de vente',
+      description: 'Liste complète des points de vente par commercial (sans filtre de période)',
+      icon: Package,
+      roles: [4, 5, 6, 7],
+      build: async () => {
+        const filtered = salesPoints
+          .filter((sp) => matchesSelectedDriver(sp.driver_id))
+          .map((sp) => ({
+            ...sp,
+            driverName: sp.driver_id ? (drivers.find((driver) => driver.id === sp.driver_id)?.full_name ?? 'Commercial inconnu') : 'Sans commercial',
+          }))
+          .sort((a, b) => a.driverName.localeCompare(b.driverName, 'fr') || a.name.localeCompare(b.name, 'fr'));
+        const driversRepresented = new Set(filtered.map((sp) => sp.driverName)).size;
+        return {
+          columns: [
+            { header: 'Commercial', key: 'driver' },
+            { header: 'Nom du point de vente', key: 'name' },
+            { header: 'Quartier', key: 'district' },
+            { header: 'Téléphone', key: 'phone' },
+            { header: 'Actif', key: 'active', align: 'center' as const },
+          ],
+          rows: filtered.map((sp) => ({
+            driver: sp.driverName,
+            name: sp.name,
+            district: sp.district,
+            phone: sp.owner_phone ?? '—',
+            active: sp.is_active ? 'Oui' : 'Non',
+          })),
+          summary: [
+            { label: 'Total points de vente', value: String(filtered.length) },
+            { label: 'Commerciaux représentés', value: String(driversRepresented) },
+            { label: 'Périmètre', value: reportScopeLabel },
+          ],
+        };
+      },
+    },
+    {
       id: 'sales-points',
       title: 'Rapport des points de vente',
       description: 'Points de vente enregistrés sur la période, quotas et statuts',
