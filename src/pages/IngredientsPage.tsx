@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   supabase, Ingredient, DoughBatch, Kneader, Supplier, INGREDIENT_CATEGORIES, formatFCFA,
-  PATE_RECIPE, INGREDIENT_VARIANCE_TOLERANCE_PCT, formatPackaging,
+  PATE_RECIPE, PATE_WEIGHT_KG, INGREDIENT_VARIANCE_TOLERANCE_PCT, formatPackaging,
 } from '@/lib/supabase';
 import { useOfflineFetch } from '@/hooks/useCachedFetch';
 import { useAuth } from '@/contexts/AuthContext';
@@ -893,17 +893,26 @@ export default function IngredientsPage({ onNavigate }: { onNavigate?: (page: st
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Poids total (kg, optionnel)</label>
-                <input type="number" min="0" step="0.1" value={batchForm.total_weight_kg} onChange={(e) => setBatchForm({ ...batchForm, total_weight_kg: e.target.value })}
-                  placeholder="Ex: 50"
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de pâtes produites ({PATE_WEIGHT_KG.toString().replace('.', ',')} kg chacune)</label>
+                <input type="number" min="0" value={batchForm.pates_produced} onChange={(e) => {
+                  const value = e.target.value;
+                  const n = parseInt(value, 10);
+                  setBatchForm({
+                    ...batchForm,
+                    pates_produced: value,
+                    total_weight_kg: n > 0 ? String(n * PATE_WEIGHT_KG) : batchForm.total_weight_kg,
+                  });
+                }}
+                  placeholder="Ex: 4"
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none" />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de pâtes produites (7,5 kg chacune)</label>
-                <input type="number" min="0" value={batchForm.pates_produced} onChange={(e) => setBatchForm({ ...batchForm, pates_produced: e.target.value })}
-                  placeholder="Ex: 4"
+                <label className="block text-sm font-medium text-gray-700 mb-1">Poids total (kg, optionnel)</label>
+                <input type="number" min="0" step="0.1" value={batchForm.total_weight_kg} onChange={(e) => setBatchForm({ ...batchForm, total_weight_kg: e.target.value })}
+                  placeholder="Ex: 50"
                   className="w-full px-3 py-2 rounded-xl border border-gray-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none" />
+                <p className="mt-1 text-xs text-gray-400">Rempli automatiquement depuis le nombre de pâtes — modifiable si le poids réel diffère.</p>
               </div>
 
               {batchForm.pates_produced && parseInt(batchForm.pates_produced, 10) > 0 && (() => {

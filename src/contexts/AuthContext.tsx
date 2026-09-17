@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase, Profile, ROLE_LABELS, UserRole } from '@/lib/supabase';
+import { isAuthRetryableFetchError } from '@supabase/supabase-js';
 import { clearPageCache, getAllCachedData } from '@/lib/readCache';
 import { precacheAllData, isPrecacheDone } from '@/lib/precache';
 import { setSentryUser } from '@/lib/sentry';
@@ -347,44 +348,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [user]);
 
-  const signIn = async (email: string, password: string, selectedRole: number) => {
-    if (!navigator.onLine) {
-      const cachedSession = getCachedSession();
-      const cachedProfile = getCachedProfile();
-      const cachedPwdHash = getCachedPwdHash();
-      const cachedRole = getCachedRole();
+  const signInOffline = async (email: string, password: string, selectedRole: number) => {
+    const cachedSession = getCachedSession();
+    const cachedProfile = getCachedProfile();
+    const cachedPwdHash = getCachedPwdHash();
+    const cachedRole = getCachedRole();
 
-      if (cachedSession?.user && cachedProfile && cachedPwdHash && cachedRole !== null) {
-        if (cachedSession.user.email !== email) {
-          return { error: 'Hors ligne : cet email ne correspond pas à la dernière session enregistrée sur cet appareil.' };
-        }
-        if (cachedRole !== selectedRole) {
-          return { error: 'Hors ligne : la fonction sélectionnée ne correspond pas à la dernière session enregistrée.' };
-        }
-        const inputHash = await hashPassword(password);
-        if (!constantTimeEquals(inputHash, cachedPwdHash)) {
-          return { error: 'Mot de passe incorrect.' };
-        }
-        // Le jeton (cachedSession) peut être périmé : sans conséquence hors
-        // ligne puisqu'aucun appel authentifié n'est fait tant qu'on reste
-        // déconnecté. Un vrai rafraîchissement aura lieu normalement dès le
-        // retour du réseau (voir l'effet "online").
-        setSession(cachedSession);
-        setUser(cachedSession.user);
-        setProfile(cachedProfile);
-        setOfflineMode(true);
-        return { error: null };
+    if (cachedSession?.user && cachedProfile && cachedPwdHash && cachedRole !== null) {
+      if (cachedSession.user.email !== email) {
+        return { error: 'Hors ligne : cet email ne correspond pas à la dernière session enregistrée sur cet appareil.' };
       }
-
-      return {
-        error: 'Vous êtes hors ligne. Connectez-vous au moins une fois en ligne pour activer le mode hors ligne sur cet appareil.',
-      };
+      if (cachedRole !== selectedRole) {
+        return { error: 'Hors ligne : la fonction sélectionnée ne correspond pas à la dernière session enregistrée.' };
+      }
+      const inputHash = await hashPassword(password);
+      if (!constantTimeEquals(inputHash, cachedPwdHash)) {
+        return { error: 'Mot de passe incorrect.' };
+      }
+      // Le jeton (cachedSession) peut être périmé : sans conséquence hors
+      // ligne puisqu'aucun appel authentifié n'est fait tant qu'on reste
+      // déconnecté. Un vrai rafraîchissement aura lieu normalement dès le
+      // retour du réseau (voir l'effet "online").
+      setSession(cachedSession);
+      setUser(cachedSession.user);
+      setProfile(cachedProfile);
+      setOfflineMode(true);
+      return { error: null };
     }
 
-    setLoading(true);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    return {
+      error: 'Vous êtes hors ligne. Connectez-vous au moins une fois en ligne pour activer le mode hors ligne sur cet appareil.',
+    };
+  };
 
-    if (!error && data.session) {
+  const signIn = async (email: string, password: string, selectedRole: number) => {
+    setLoading(true);
+
+    // On tente toujours l'appel réseau réel en premier, même si
+    // navigator.onLine indique "hors ligne" : cet indicateur reste souvent
+    // bloqué à false après une coupure sur mobile/PWA, longtemps après que
+    // la connexion soit réellement rétablie. Se fier à lui pour décider du
+    // mode hors ligne empêchait de se reconnecter alors qu'internet
+    // fonctionnait de nouveau. On ne bascule en mode hors ligne que si
+    // l'appel échoue vraiment (exception ou erreur réseau retryable).
+    let data: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>['data'] | null = null;
+    let error: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>['error'] | null = null;
+    try {
+      const result = await supabase.auth.signInWithPassword({ email, password });
+      data = result.data;
+      error = result.error;
+    } catch {
+      const fallback = await signInOffline(email, password, selectedRole);
+      setLoading(false);
+      return fallback;
+    }
+
+    if (error && isAuthRetryableFetchError(error)) {
+      const fallback = await signInOffline(email, password, selectedRole);
+      setLoading(false);
+      return fallback;
+    }
+
+    if (!error && data?.session) {
       const prof = await fetchProfile(data.session.user.id);
       if (!prof) {
         clearCache();
