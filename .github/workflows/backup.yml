@@ -1,0 +1,76 @@
+name: Sauvegarde de la base
+
+# Sauvegarde logique quotidienne, chiffrée et VÉRIFIÉE par une restauration
+# réelle. Complète — sans le remplacer — le PITR de Supabase : le PITR protège
+# d'une erreur humaine récente sur le projet en cours, cette sauvegarde-ci
+# protège de la perte du projet lui-même (compte suspendu, suppression, litige
+# avec le fournisseur). Voir docs/sauvegarde-et-restauration.md.
+
+on:
+  schedule:
+    # 02h10 UTC, soit 03h10 à Brazzaville — après la fermeture, avant l'ouverture.
+    - cron: "10 2 * * *"
+  workflow_dispatch:      # déclenchement manuel avant une migration risquée
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Extraire, vérifier, chiffrer
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      # Base jetable où la sauvegarde est restaurée pour prouver qu'elle l'est.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer pg_dump 16 et age
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-16 age
+
+      - name: Sauvegarder
+        env:
+          # Chaîne de connexion Supabase, en lecture. Utiliser le pooler en mode
+          # session : pg_dump a besoin de transactions longues, que le mode
+          # transaction interrompt.
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+          # Clé PUBLIQUE age. La CI ne peut donc pas déchiffrer les sauvegardes
+          # passées, même compromise. La clé privée reste hors ligne.
+          BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+          BACKUP_DIR: ./backups
+          BACKUP_VERIFY_URL: postgres://postgres@localhost:5433/postgres
+        run: ./scripts/backup-database.sh
+
+      - name: Déposer l'archive chiffrée
+        uses: actions/upload-artifact@v4
+        with:
+          name: sauvegarde-${{ github.run_id }}
+          path: backups/*.age
+          # 90 jours est le maximum autorisé par GitHub. C'est une rétention
+          # courte pour une obligation comptable : voir la section « Hors site »
+          # de docs/sauvegarde-et-restauration.md pour la copie longue durée.
+          retention-days: 90
+          if-no-files-found: error
+
+      # Le job échoue si la restauration de contrôle a échoué : mieux vaut une
+      # alerte qu'une archive dont on découvrirait le jour du sinistre qu'elle
+      # ne se restaure pas.

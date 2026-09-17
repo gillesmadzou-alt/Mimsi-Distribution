@@ -32,3 +32,8 @@ supabase/.temp/
 # Le projet est déployé avec npm (package-lock.json)
 pnpm-lock.yaml
 pnpm-workspace.yaml
+
+# Archives de sauvegarde : chiffrees, mais elles n'ont rien a faire dans git
+/backups/
+*.dump
+*.dump.age
