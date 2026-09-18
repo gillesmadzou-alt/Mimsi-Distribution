@@ -381,9 +381,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   };
 
+  // signIn ne touche volontairement pas à `loading` : AppContent remplace toute
+  // l'interface par un spinner tant que `loading` est vrai, ce qui démonterait
+  // AuthPage en pleine tentative de connexion et ferait disparaître le message
+  // d'erreur (l'utilisateur retombait sur un formulaire vide, sans explication).
   const signIn = async (email: string, password: string, selectedRole: number) => {
-    setLoading(true);
-
     // On tente toujours l'appel réseau réel en premier, même si
     // navigator.onLine indique "hors ligne" : cet indicateur reste souvent
     // bloqué à false après une coupure sur mobile/PWA, longtemps après que
@@ -398,15 +400,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data = result.data;
       error = result.error;
     } catch {
-      const fallback = await signInOffline(email, password, selectedRole);
-      setLoading(false);
-      return fallback;
+      return await signInOffline(email, password, selectedRole);
     }
 
     if (error && isAuthRetryableFetchError(error)) {
-      const fallback = await signInOffline(email, password, selectedRole);
-      setLoading(false);
-      return fallback;
+      return await signInOffline(email, password, selectedRole);
     }
 
     if (!error && data?.session) {
@@ -417,7 +415,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setProfile(null);
         try { await supabase.auth.signOut(); } catch { /* ignore */ }
-        setLoading(false);
         return {
           error: 'Connexion reconnue, mais votre profil utilisateur est introuvable ou inaccessible. Vérifiez que vous utilisez bien la version Mimsi mise à jour, puis réessayez.',
         };
@@ -428,14 +425,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setProfile(null);
         try { await supabase.auth.signOut(); } catch { /* ignore */ }
-        setLoading(false);
         return {
           error: `La fonction sélectionnée ne correspond pas à ce compte. Sélectionnez « ${ROLE_LABELS[prof.role]} » puis réessayez.`,
         };
       }
       if (prof && prof.is_active === false) {
         clearCache();
-        setLoading(false);
         try { await supabase.auth.signOut(); } catch { /* ignore */ }
         return { error: 'Ce compte est désactivé. Contactez un administrateur.' };
       }
@@ -459,7 +454,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    setLoading(false);
     if (error) {
       console.error('Sign-in failed:', error);
       return { error: 'Identifiants invalides. Vérifiez votre email et votre mot de passe.' };
